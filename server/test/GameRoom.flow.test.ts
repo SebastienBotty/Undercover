@@ -35,6 +35,20 @@ async function joinPlayer(
   return ws;
 }
 
+// The game requires CLUE_ROUNDS_PER_VOTE (2) full passes through turnOrder before a vote opens.
+// This drives one full pass and returns the last broadcast snapshot every socket received, so
+// callers can assert on the resulting phase (still CLUE_ROUND after pass 1, VOTE after pass 2).
+async function submitFullClueRound(sockets: Record<string, WebSocket>, turnOrder: string[], passNumber: number) {
+  let lastResults: any[] = [];
+  for (const playerId of turnOrder) {
+    const ws = sockets[playerId];
+    const next = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+    ws.send(JSON.stringify({ type: 'SUBMIT_CLUE', text: `clue-from-${playerId}-pass${passNumber}` }));
+    lastResults = await next;
+  }
+  return lastResults;
+}
+
 describe('GameRoom game flow', () => {
   it('runs a full 3-player round without Mr. White', async () => {
     const code = 'FLOW-1';
@@ -70,14 +84,9 @@ describe('GameRoom game flow', () => {
     const turnOrder = clueRoundSnap.turnOrder as string[];
     const sockets: Record<string, WebSocket> = { a: wsA, b: wsB, c: wsC };
 
-    for (const playerId of turnOrder) {
-      const ws = sockets[playerId];
-      const next = Promise.all(
-        Object.values(sockets).map((s) => waitForMessage(s))
-      );
-      ws.send(JSON.stringify({ type: 'SUBMIT_CLUE', text: `clue-from-${playerId}` }));
-      await next;
-    }
+    // Two full clue passes (CLUE_ROUNDS_PER_VOTE) are required before voting opens.
+    await submitFullClueRound(sockets, turnOrder, 1);
+    await submitFullClueRound(sockets, turnOrder, 2);
 
     // Now in VOTE phase: everyone votes to eliminate player 'b' or 'c' etc. Vote for whichever
     // player is NOT the last one to have sent SUBMIT_CLUE is irrelevant here — just check the
@@ -99,6 +108,42 @@ describe('GameRoom game flow', () => {
     expect(finalSnap.phase).toBe('ELIMINATION');
     const eliminatedPlayer = finalSnap.players.find((p: any) => p.id === target);
     expect(eliminatedPlayer.alive).toBe(false);
+  });
+
+  it('requires two full clue passes before opening the vote', async () => {
+    const code = 'FLOW-TWO-ROUNDS';
+    const id = env.GAME_ROOM.idFromName(code);
+    const stub = env.GAME_ROOM.get(id);
+
+    const wsA = await joinPlayer(stub, code, 'Alice', 'a', true);
+    const wsB = await joinPlayer(stub, code, 'Bob', 'b', false, [wsA]);
+    const wsC = await joinPlayer(stub, code, 'Carl', 'c', false, [wsA, wsB]);
+    const sockets: Record<string, WebSocket> = { a: wsA, b: wsB, c: wsC };
+
+    const started = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+    wsA.send(
+      JSON.stringify({
+        type: 'START_GAME',
+        settings: { themes: ['anime'], similarityLevel: 'none', mrWhiteEnabled: false },
+      })
+    );
+    await started;
+
+    const afterAlarmA = waitForMessage(wsA);
+    await runDurableObjectAlarm(stub);
+    const clueRoundSnap = await afterAlarmA;
+    const turnOrder = clueRoundSnap.turnOrder as string[];
+    expect(clueRoundSnap.round).toBe(1);
+
+    // First full pass: everyone has now given one clue each, but a single pass isn't enough --
+    // the room must still be in CLUE_ROUND, now on round 2, not VOTE.
+    const [afterFirstPass] = await submitFullClueRound(sockets, turnOrder, 1);
+    expect(afterFirstPass.phase).toBe('CLUE_ROUND');
+    expect(afterFirstPass.round).toBe(2);
+
+    // Second full pass: NOW voting should open.
+    const [afterSecondPass] = await submitFullClueRound(sockets, turnOrder, 2);
+    expect(afterSecondPass.phase).toBe('VOTE');
   });
 
   it('rejects SUBMIT_CLUE from a player who is not the current turn', async () => {
@@ -193,12 +238,8 @@ describe('GameRoom game flow', () => {
     const turnOrder = clueRoundSnap.turnOrder as string[];
     const sockets: Record<string, WebSocket> = { a: wsA, b: wsB, c: wsC };
 
-    for (const playerId of turnOrder) {
-      const ws = sockets[playerId];
-      const next = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
-      ws.send(JSON.stringify({ type: 'SUBMIT_CLUE', text: `clue-from-${playerId}` }));
-      await next;
-    }
+    await submitFullClueRound(sockets, turnOrder, 1);
+    await submitFullClueRound(sockets, turnOrder, 2);
 
     // Now in VOTE phase. First player attempts to vote for a player id that doesn't exist.
     const firstVoterWs = sockets[turnOrder[0]];
@@ -250,12 +291,8 @@ describe('GameRoom game flow', () => {
     const turnOrder = clueRoundSnap.turnOrder as string[];
     const sockets: Record<string, WebSocket> = { a: wsA, b: wsB, c: wsC };
 
-    for (const playerId of turnOrder) {
-      const ws = sockets[playerId];
-      const next = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
-      ws.send(JSON.stringify({ type: 'SUBMIT_CLUE', text: `clue-from-${playerId}` }));
-      await next;
-    }
+    await submitFullClueRound(sockets, turnOrder, 1);
+    await submitFullClueRound(sockets, turnOrder, 2);
 
     // Vote for a player who, per FLOW-5's deterministic 3-player/no-Mr.-White setup, cannot be
     // Mr. White (there is none) -- either surviving role keeps the round going, since 1 civil +
@@ -334,12 +371,8 @@ describe('GameRoom game flow', () => {
     expect(clueRoundSnap.phase).toBe('CLUE_ROUND');
 
     const turnOrder = clueRoundSnap.turnOrder as string[];
-    for (const playerId of turnOrder) {
-      const ws = sockets[playerId];
-      const next = Promise.all(order.map((pid) => waitForMessage(sockets[pid])));
-      ws.send(JSON.stringify({ type: 'SUBMIT_CLUE', text: `clue-from-${playerId}` }));
-      await next;
-    }
+    await submitFullClueRound(sockets, turnOrder, 1);
+    await submitFullClueRound(sockets, turnOrder, 2);
 
     // Everyone votes to eliminate Mr. White.
     const voteResults: any[] = [];

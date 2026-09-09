@@ -9,6 +9,7 @@ import { selectCharacterPair } from './characters/selectPair';
 import { CHARACTERS } from './characters/data';
 
 const STORAGE_KEY = 'room';
+const CLUE_ROUNDS_PER_VOTE = 2;
 
 interface ConnAttachment {
   playerId: string;
@@ -184,9 +185,21 @@ export class GameRoom extends DurableObject {
 
     const aliveIds = new Set(room.players.filter((p) => p.alive).map((p) => p.id));
     if (isClueRoundComplete(room.clues, room.round, aliveIds)) {
-      room.phase = 'VOTE';
+      // Players give clues for CLUE_ROUNDS_PER_VOTE full passes before a vote is allowed --
+      // room.round increments once per pass (odd = first pass of the pair, even = second),
+      // so only an even round number after completion actually opens the vote.
+      if (room.round % CLUE_ROUNDS_PER_VOTE === 0) {
+        room.phase = 'VOTE';
+        await this.saveRoom();
+        this.broadcast();
+        return;
+      }
+
+      room.round += 1;
+      room.currentTurnIndex = nextAliveIndex(room.turnOrder, aliveIds, -1);
       await this.saveRoom();
       this.broadcast();
+      await this.scheduleClueTimeout();
       return;
     }
 
