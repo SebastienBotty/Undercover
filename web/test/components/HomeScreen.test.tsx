@@ -34,6 +34,24 @@ describe('HomeScreen', () => {
     await vi.waitFor(() => expect(onEnterRoom).toHaveBeenCalledWith('NEWRM', 'Seb', true));
   });
 
+  it('shows an inline error message when creating a room fails, instead of doing nothing', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new Error('network error');
+      })
+    );
+    const onEnterRoom = vi.fn();
+    render(<HomeScreen onEnterRoom={onEnterRoom} />);
+    fireEvent.change(screen.getByLabelText(/pseudo/i), { target: { value: 'Seb' } });
+    fireEvent.click(screen.getByRole('button', { name: /continuer/i }));
+
+    fireEvent.click(screen.getByRole('button', { name: /créer une salle/i }));
+    await screen.findByRole('alert');
+
+    expect(onEnterRoom).not.toHaveBeenCalled();
+  });
+
   it('calls onEnterRoom with the typed code and host=false after joining a room', () => {
     const onEnterRoom = vi.fn();
     render(<HomeScreen onEnterRoom={onEnterRoom} />);

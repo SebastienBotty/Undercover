@@ -10,6 +10,7 @@ export function HomeScreen({ onEnterRoom }: HomeScreenProps) {
   const { pseudo, setPseudo } = usePseudo();
   const [draftPseudo, setDraftPseudo] = useState(pseudo);
   const [joinCode, setJoinCode] = useState('');
+  const [createRoomError, setCreateRoomError] = useState<string | null>(null);
 
   if (!pseudo) {
     return (
@@ -27,10 +28,15 @@ export function HomeScreen({ onEnterRoom }: HomeScreenProps) {
   }
 
   async function handleCreateRoom() {
-    const serverUrl = process.env.NEXT_PUBLIC_SERVER_URL ?? '';
-    const res = await fetch(`${serverUrl}/api/create-room`, { method: 'POST' });
-    const { code } = (await res.json()) as { code: string };
-    onEnterRoom(code, pseudo, true);
+    setCreateRoomError(null);
+    try {
+      const serverUrl = process.env.NEXT_PUBLIC_SERVER_URL ?? '';
+      const res = await fetch(`${serverUrl}/api/create-room`, { method: 'POST' });
+      const { code } = (await res.json()) as { code: string };
+      onEnterRoom(code, pseudo, true);
+    } catch {
+      setCreateRoomError('Impossible de créer la salle. Vérifie ta connexion et réessaie.');
+    }
   }
 
   function handleJoinRoom() {
@@ -41,6 +47,7 @@ export function HomeScreen({ onEnterRoom }: HomeScreenProps) {
     <div>
       <p>Pseudo : {pseudo} <button onClick={() => setPseudo('')}>changer</button></p>
       <button onClick={handleCreateRoom}>Créer une salle</button>
+      {createRoomError && <p role="alert">{createRoomError}</p>}
       <div>
         <label htmlFor="join-code-input">Code de la salle</label>
         <input id="join-code-input" value={joinCode} onChange={(e) => setJoinCode(e.target.value)} />
