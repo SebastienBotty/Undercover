@@ -1,6 +1,6 @@
 'use client';
 import { useState } from 'react';
-import styles from './VoteScreen.module.css';
+import { RoundRecapTable } from './RoundRecapTable';
 
 interface Player {
   id: string;
@@ -8,16 +8,25 @@ interface Player {
   alive: boolean;
 }
 
+interface Clue {
+  playerId: string;
+  round: number;
+  text: string;
+}
+
 interface VoteScreenProps {
   players: Player[];
+  turnOrder: string[];
+  clues: Clue[];
+  round: number;
   selfId: string;
   onVote: (targetId: string) => void;
 }
 
-export function VoteScreen({ players, selfId, onVote }: VoteScreenProps) {
+export function VoteScreen({ players, turnOrder, clues, round, selfId, onVote }: VoteScreenProps) {
   const [votedForId, setVotedForId] = useState<string | null>(null);
-  const targets = players.filter((p) => p.alive && p.id !== selfId);
-  const votedFor = targets.find((p) => p.id === votedForId);
+  const votableIds = new Set(players.filter((p) => p.alive && p.id !== selfId).map((p) => p.id));
+  const votedFor = players.find((p) => p.id === votedForId);
 
   function handleVote(targetId: string) {
     setVotedForId(targetId);
@@ -28,22 +37,15 @@ export function VoteScreen({ players, selfId, onVote }: VoteScreenProps) {
     <div>
       <span className="eyebrow">Vote</span>
       <h2>Qui soupçonnes-tu ?</h2>
-      <ul className="roster">
-        {targets.map((p) => {
-          const isSelected = p.id === votedForId;
-          return (
-            <li key={p.id}>
-              <button
-                onClick={() => handleVote(p.id)}
-                className={`btn btnBlock ${isSelected ? styles.selected : 'btnGhost'}`}
-              >
-                {p.name}
-                {isSelected && <span className={styles.check}> ✓</span>}
-              </button>
-            </li>
-          );
-        })}
-      </ul>
+      <RoundRecapTable
+        players={players}
+        turnOrder={turnOrder}
+        clues={clues}
+        totalRounds={round}
+        votableIds={votableIds}
+        selectedId={votedForId}
+        onVote={handleVote}
+      />
       {votedFor && (
         <p className="muted">
           Tu as voté pour <strong>{votedFor.name}</strong>. En attente des autres joueurs...

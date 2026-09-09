@@ -112,6 +112,9 @@ describe('GameApp', () => {
           type: 'ROOM_STATE',
           phase: 'VOTE',
           hostId: 'p1',
+          turnOrder: ['p1', 'p2'],
+          clues: [],
+          round: 1,
           players: [
             { id: 'p1', name: 'Alice', alive: true, connected: true },
             { id: 'p2', name: 'Bob', alive: true, connected: true },

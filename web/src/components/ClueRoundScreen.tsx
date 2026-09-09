@@ -1,6 +1,6 @@
 'use client';
 import { useState } from 'react';
-import styles from './ClueRoundScreen.module.css';
+import { RoundRecapTable } from './RoundRecapTable';
 
 interface Player {
   id: string;
@@ -28,29 +28,18 @@ export function ClueRoundScreen({ players, turnOrder, currentTurnIndex, clues, r
   const currentPlayerId = turnOrder[currentTurnIndex];
   const currentPlayer = players.find((p) => p.id === currentPlayerId);
   const isMyTurn = currentPlayerId === selfId;
-  const roundClues = clues.filter((c) => c.round === round);
 
   return (
     <div>
       <span className="eyebrow">Manche {round}</span>
       <h2>Indices</h2>
-      <table className={styles.table}>
-        <tbody>
-          {turnOrder.map((playerId) => {
-            const player = players.find((p) => p.id === playerId);
-            if (!player) return null;
-            const clue = roundClues.find((c) => c.playerId === playerId);
-            const isTurn = playerId === currentPlayerId;
-            return (
-              <tr key={playerId} className={isTurn ? styles.rowActive : undefined}>
-                <td className={styles.flagCell}>{isTurn && <span aria-label="C'est son tour">🚩</span>}</td>
-                <td className={styles.nameCell}>{player.name}</td>
-                <td className={styles.clueCell}>{clue ? clue.text || '(pas de réponse)' : '…'}</td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+      <RoundRecapTable
+        players={players}
+        turnOrder={turnOrder}
+        clues={clues}
+        totalRounds={round}
+        currentTurnPlayerId={currentPlayerId}
+      />
 
       {isMyTurn ? (
         <form

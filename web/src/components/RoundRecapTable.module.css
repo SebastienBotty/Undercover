@@ -1,0 +1,65 @@
+.wrapper {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.table th,
+.table td {
+  padding: 0.45rem 0.5rem;
+  border-bottom: 1px solid var(--panel-border);
+  text-align: left;
+}
+
+.table th {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.table tr:last-child td {
+  border-bottom: none;
+}
+
+.flagCell {
+  width: 1.5rem;
+  text-align: center;
+}
+
+.nameCell {
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.clueCell {
+  min-width: 8rem;
+  color: var(--text-muted);
+}
+
+.rowActive .nameCell {
+  color: var(--accent-strong);
+  font-weight: 600;
+}
+
+.selected {
+  background: var(--danger-strong);
+  color: #fff;
+  border: 1px solid var(--danger-strong);
+}
+
+.selected:hover {
+  filter: brightness(1.05);
+}
+
+.check {
+  font-weight: 700;
+}

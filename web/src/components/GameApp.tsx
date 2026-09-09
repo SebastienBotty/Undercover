@@ -105,6 +105,9 @@ export function GameApp({ roomCode, pseudo, isHost, onLeaveRoom }: GameAppProps)
       return (
         <VoteScreen
           players={roomState.players}
+          turnOrder={roomState.turnOrder}
+          clues={roomState.clues}
+          round={roomState.round}
           selfId={getOrCreateClientId()}
           onVote={(targetId) => send({ type: 'SUBMIT_VOTE', targetId })}
         />
