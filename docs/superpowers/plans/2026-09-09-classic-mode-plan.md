@@ -2462,16 +2462,22 @@ export function GameApp({ roomCode, pseudo, isHost }: GameAppProps) {
     return <p>Connexion à la salle {roomCode}...</p>;
   }
 
+  function renderPhase() {
+    if (!roomState) return <p>En attente des données de la salle...</p>;
+    if (roomState.phase === 'LOBBY') return <p>En attente dans le lobby...</p>; // replaced by LobbyScreen in Task 13
+    return <p>Connecté ({roomState.phase})</p>; // fallback for phases not wired up yet
+  }
+
   return (
     <div>
       {errorMessage && <p role="alert">{errorMessage}</p>}
-      {!roomState && <p>En attente des données de la salle...</p>}
-      {roomState?.phase === 'LOBBY' && <p>En attente dans le lobby...</p>}
-      {roomState && roomState.phase !== 'LOBBY' && <p>Connecté ({roomState.phase})</p>}
+      {renderPhase()}
     </div>
   );
 }
 ```
+
+`renderPhase` is an exclusive dispatch (an `if`/`return` chain, one phase renders at a time) rather than a list of independent `{condition && <X/>}` blocks — this matters because Tasks 13-17 each insert one more `if (roomState.phase === '...') return <...Screen .../>;` line into this same function, above the final fallback `return`. If phases were independent `&&` blocks instead, every phase added after the first would render its own screen AND still match the old catch-all "Connecté (phase)" fallback underneath it, since sibling `&&` blocks don't exclude each other.
 
 - [ ] **Step 8: Run test to verify it passes**
 
@@ -2693,7 +2699,7 @@ Expected: PASS (4 tests)
 
 - [ ] **Step 5: Wire `LobbyScreen` into `GameApp` and persist host settings**
 
-Modify `web/src/components/GameApp.tsx`: replace the `roomState?.phase === 'LOBBY'` line and add settings state.
+Modify `web/src/components/GameApp.tsx`: add settings state, and inside `renderPhase()` replace the line `if (roomState.phase === 'LOBBY') return <p>En attente dans le lobby...</p>;` with a call to `LobbyScreen`.
 
 ```tsx
 // additions/changes in web/src/components/GameApp.tsx
@@ -2712,16 +2718,18 @@ function handleStart() {
   send({ type: 'START_GAME', settings });
 }
 
-// replace the LOBBY branch in the returned JSX:
-{roomState?.phase === 'LOBBY' && (
-  <LobbyScreen
-    isHost={roomState.hostId === getOrCreateClientId()}
-    players={roomState.players}
-    settings={settings}
-    onStart={handleStart}
-    onSettingsChange={handleSettingsChange}
-  />
-)}
+// inside renderPhase(), replace the LOBBY line:
+if (roomState.phase === 'LOBBY') {
+  return (
+    <LobbyScreen
+      isHost={roomState.hostId === getOrCreateClientId()}
+      players={roomState.players}
+      settings={settings}
+      onStart={handleStart}
+      onSettingsChange={handleSettingsChange}
+    />
+  );
+}
 ```
 
 - [ ] **Step 6: Add a test for this wiring (append to `web/test/components/GameApp.test.tsx`)**
@@ -2848,12 +2856,11 @@ Expected: PASS (3 tests)
 // additions in web/src/components/GameApp.tsx
 import { RoleRevealScreen } from '@/components/RoleRevealScreen';
 
-// replace the generic "Connecté (phase)" fallback with a specific ROLE_REVEAL branch,
-// placed before the generic fallback:
-{roomState?.phase === 'ROLE_REVEAL' && (() => {
+// inside renderPhase(), insert this branch before the final fallback return:
+if (roomState.phase === 'ROLE_REVEAL') {
   const me = roomState.players.find((p: any) => p.id === getOrCreateClientId());
   return <RoleRevealScreen role={me?.role ?? null} character={me?.character ?? null} />;
-})()}
+}
 ```
 
 - [ ] **Step 6: Add a wiring test (append to `web/test/components/GameApp.test.tsx`)**
@@ -3050,17 +3057,20 @@ Expected: PASS (3 tests)
 // additions in web/src/components/GameApp.tsx
 import { ClueRoundScreen } from '@/components/ClueRoundScreen';
 
-{roomState?.phase === 'CLUE_ROUND' && (
-  <ClueRoundScreen
-    players={roomState.players}
-    turnOrder={roomState.turnOrder}
-    currentTurnIndex={roomState.currentTurnIndex}
-    clues={roomState.clues}
-    round={roomState.round}
-    selfId={getOrCreateClientId()}
-    onSubmitClue={(text) => send({ type: 'SUBMIT_CLUE', text })}
-  />
-)}
+// inside renderPhase(), insert this branch before the final fallback return:
+if (roomState.phase === 'CLUE_ROUND') {
+  return (
+    <ClueRoundScreen
+      players={roomState.players}
+      turnOrder={roomState.turnOrder}
+      currentTurnIndex={roomState.currentTurnIndex}
+      clues={roomState.clues}
+      round={roomState.round}
+      selfId={getOrCreateClientId()}
+      onSubmitClue={(text) => send({ type: 'SUBMIT_CLUE', text })}
+    />
+  );
+}
 ```
 
 - [ ] **Step 6: Add a wiring test (append to `web/test/components/GameApp.test.tsx`)**
@@ -3317,33 +3327,90 @@ Expected: PASS (3 tests)
 import { VoteScreen } from '@/components/VoteScreen';
 import { EliminationScreen } from '@/components/EliminationScreen';
 
-{roomState?.phase === 'VOTE' && (
-  <VoteScreen
-    players={roomState.players}
-    selfId={getOrCreateClientId()}
-    onVote={(targetId) => send({ type: 'SUBMIT_VOTE', targetId })}
-  />
-)}
+// inside renderPhase(), insert these two branches before the final fallback return:
+if (roomState.phase === 'VOTE') {
+  return (
+    <VoteScreen
+      players={roomState.players}
+      selfId={getOrCreateClientId()}
+      onVote={(targetId) => send({ type: 'SUBMIT_VOTE', targetId })}
+    />
+  );
+}
 
-{roomState?.phase === 'ELIMINATION' && (
-  <EliminationScreen
-    players={roomState.players}
-    lastEliminatedId={roomState.lastEliminatedId}
-    selfId={getOrCreateClientId()}
-    onMrWhiteGuess={(guess) => send({ type: 'MR_WHITE_GUESS', guess })}
-  />
-)}
+if (roomState.phase === 'ELIMINATION') {
+  return (
+    <EliminationScreen
+      players={roomState.players}
+      lastEliminatedId={roomState.lastEliminatedId}
+      selfId={getOrCreateClientId()}
+      onMrWhiteGuess={(guess) => send({ type: 'MR_WHITE_GUESS', guess })}
+    />
+  );
+}
 ```
 
-- [ ] **Step 10: Run the full web test suite**
+- [ ] **Step 10: Add wiring tests (append to `web/test/components/GameApp.test.tsx`)**
+
+```tsx
+it('renders VoteScreen and sends SUBMIT_VOTE on vote', () => {
+  window.localStorage.setItem('undercover:clientId', 'p1');
+  const send = vi.fn();
+  vi.spyOn(socketModule, 'useGameSocket').mockReturnValue(
+    mockSocket({
+      status: 'open',
+      send,
+      lastMessage: {
+        type: 'ROOM_STATE',
+        phase: 'VOTE',
+        hostId: 'p1',
+        players: [
+          { id: 'p1', name: 'Alice', alive: true, connected: true },
+          { id: 'p2', name: 'Bob', alive: true, connected: true },
+        ],
+      },
+    })
+  );
+  render(<GameApp roomCode="ABCDE" pseudo="Alice" isHost={false} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Bob' }));
+  expect(send).toHaveBeenCalledWith({ type: 'SUBMIT_VOTE', targetId: 'p2' });
+});
+
+it('renders EliminationScreen and sends MR_WHITE_GUESS on guess', () => {
+  window.localStorage.setItem('undercover:clientId', 'p2');
+  const send = vi.fn();
+  vi.spyOn(socketModule, 'useGameSocket').mockReturnValue(
+    mockSocket({
+      status: 'open',
+      send,
+      lastMessage: {
+        type: 'ROOM_STATE',
+        phase: 'ELIMINATION',
+        hostId: 'p1',
+        lastEliminatedId: 'p2',
+        players: [
+          { id: 'p1', name: 'Alice', alive: true, connected: true, role: null, character: null },
+          { id: 'p2', name: 'Bob', alive: false, connected: true, role: 'mrwhite', character: null },
+        ],
+      },
+    })
+  );
+  render(<GameApp roomCode="ABCDE" pseudo="Bob" isHost={false} />);
+  fireEvent.change(screen.getByLabelText(/devine le personnage/i), { target: { value: 'Goku' } });
+  fireEvent.click(screen.getByRole('button', { name: /deviner/i }));
+  expect(send).toHaveBeenCalledWith({ type: 'MR_WHITE_GUESS', guess: 'Goku' });
+});
+```
+
+- [ ] **Step 11: Run the full web test suite**
 
 Run: `cd web && npx vitest run`
 Expected: PASS
 
-- [ ] **Step 11: Commit**
+- [ ] **Step 12: Commit**
 
 ```bash
-git add web/src/components/VoteScreen.tsx web/src/components/EliminationScreen.tsx web/src/components/GameApp.tsx web/test/components/VoteScreen.test.tsx web/test/components/EliminationScreen.test.tsx
+git add web/src/components/VoteScreen.tsx web/src/components/EliminationScreen.tsx web/src/components/GameApp.tsx web/test/components/VoteScreen.test.tsx web/test/components/EliminationScreen.test.tsx web/test/components/GameApp.test.tsx
 git commit -m "feat(web): add vote and elimination reveal screens"
 ```
 
@@ -3464,12 +3531,12 @@ interface GameAppProps {
 export function GameApp({ roomCode, pseudo, isHost, onLeaveRoom }: GameAppProps) {
 ```
 
-Then add the `END` phase branch next to the other phase branches in the returned JSX:
+Then, inside `renderPhase()`, insert the `END` branch before the final fallback return (which is now unreachable for any phase in the state machine, but stays as a defensive default):
 
 ```tsx
-{roomState?.phase === 'END' && (
-  <EndScreen winner={roomState.winner} players={roomState.players} onReplay={onLeaveRoom} />
-)}
+if (roomState.phase === 'END') {
+  return <EndScreen winner={roomState.winner} players={roomState.players} onReplay={onLeaveRoom} />;
+}
 ```
 
 - [ ] **Step 6: Update `web/src/app/page.tsx` to pass `onLeaveRoom`**
