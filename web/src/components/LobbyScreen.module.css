@@ -42,7 +42,10 @@
 }
 
 .seriesSummary {
-  padding: 0.45rem 0.75rem 0.45rem 2rem;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.75rem;
   font-size: 0.85rem;
   color: var(--accent);
   cursor: pointer;
@@ -57,11 +60,20 @@
   color: var(--accent-strong);
 }
 
+.seriesArrow {
+  display: inline-block;
+  transition: transform 0.15s ease;
+}
+
+.seriesDetails[open] > .seriesSummary .seriesArrow {
+  transform: rotate(90deg);
+}
+
 .seriesList {
   display: flex;
   flex-direction: column;
   gap: 0.15rem;
-  padding: 0 0.75rem 0.6rem 2rem;
+  padding: 0 0.75rem 0.6rem 1.75rem;
   max-height: 12rem;
   overflow-y: auto;
 }

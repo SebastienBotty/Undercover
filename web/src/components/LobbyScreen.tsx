@@ -83,7 +83,12 @@ export function LobbyScreen({ isHost, code, players, settings, onStart, onSettin
 
                 {theme.series && theme.series.length > 0 && (
                   <details className={styles.seriesDetails}>
-                    <summary className={styles.seriesSummary}>Choisir les {theme.label.toLowerCase()}s</summary>
+                    <summary className={styles.seriesSummary}>
+                      <span aria-hidden="true" className={styles.seriesArrow}>
+                        ▸
+                      </span>
+                      Choisir les {theme.label.toLowerCase()}s
+                    </summary>
                     <div className={styles.seriesList}>
                       {theme.series.map((series) => {
                         const isChecked = settings.animeSeries.length === 0 || settings.animeSeries.includes(series.id);
