@@ -7,15 +7,17 @@ import { RoleRevealScreen } from '@/components/RoleRevealScreen';
 import { ClueRoundScreen } from '@/components/ClueRoundScreen';
 import { VoteScreen } from '@/components/VoteScreen';
 import { EliminationScreen } from '@/components/EliminationScreen';
+import { EndScreen } from '@/components/EndScreen';
 import { getStoredHostSettings, storeHostSettings, type RoomSettings } from '@/lib/hostSettings';
 
 interface GameAppProps {
   roomCode: string;
   pseudo: string;
   isHost: boolean;
+  onLeaveRoom: () => void;
 }
 
-export function GameApp({ roomCode, pseudo, isHost }: GameAppProps) {
+export function GameApp({ roomCode, pseudo, isHost, onLeaveRoom }: GameAppProps) {
   const serverUrl = process.env.NEXT_PUBLIC_SERVER_URL ?? '';
   const wsUrl = `${serverUrl.replace(/^http/, 'ws')}/ws?code=${roomCode}`;
   const { status, lastMessage, send } = useGameSocket(wsUrl);
@@ -105,6 +107,9 @@ export function GameApp({ roomCode, pseudo, isHost }: GameAppProps) {
           onMrWhiteGuess={(guess) => send({ type: 'MR_WHITE_GUESS', guess })}
         />
       );
+    }
+    if (roomState.phase === 'END') {
+      return <EndScreen winner={roomState.winner} players={roomState.players} onReplay={onLeaveRoom} />;
     }
     return <p>Connecté ({roomState.phase})</p>; // fallback for phases not wired up yet
   }

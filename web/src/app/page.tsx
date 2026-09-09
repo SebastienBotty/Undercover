@@ -10,5 +10,5 @@ export default function Page() {
     return <HomeScreen onEnterRoom={(code, pseudo, isHost) => setRoom({ code, pseudo, isHost })} />;
   }
 
-  return <GameApp roomCode={room.code} pseudo={room.pseudo} isHost={room.isHost} />;
+  return <GameApp roomCode={room.code} pseudo={room.pseudo} isHost={room.isHost} onLeaveRoom={() => setRoom(null)} />;
 }

@@ -17,14 +17,14 @@ describe('GameApp', () => {
 
   it('shows a connecting message before the socket opens', () => {
     vi.spyOn(socketModule, 'useGameSocket').mockReturnValue(mockSocket({ status: 'connecting' }));
-    render(<GameApp roomCode="ABCDE" pseudo="Seb" isHost={false} />);
+    render(<GameApp roomCode="ABCDE" pseudo="Seb" isHost={false} onLeaveRoom={() => {}} />);
     expect(screen.getByText(/connexion/i)).toBeInTheDocument();
   });
 
   it('sends JOIN_ROOM once the socket opens', () => {
     const send = vi.fn();
     vi.spyOn(socketModule, 'useGameSocket').mockReturnValue(mockSocket({ status: 'open', send }));
-    render(<GameApp roomCode="ABCDE" pseudo="Seb" isHost={false} />);
+    render(<GameApp roomCode="ABCDE" pseudo="Seb" isHost={false} onLeaveRoom={() => {}} />);
     expect(send).toHaveBeenCalledWith(expect.objectContaining({ type: 'JOIN_ROOM', code: 'ABCDE', name: 'Seb' }));
   });
 
@@ -32,7 +32,7 @@ describe('GameApp', () => {
     vi.spyOn(socketModule, 'useGameSocket').mockReturnValue(
       mockSocket({ status: 'open', lastMessage: { type: 'ROOM_STATE', phase: 'LOBBY', players: [] } })
     );
-    render(<GameApp roomCode="ABCDE" pseudo="Seb" isHost={false} />);
+    render(<GameApp roomCode="ABCDE" pseudo="Seb" isHost={false} onLeaveRoom={() => {}} />);
     expect(screen.getByText(/lobby/i)).toBeInTheDocument();
   });
 
@@ -40,7 +40,7 @@ describe('GameApp', () => {
     vi.spyOn(socketModule, 'useGameSocket').mockReturnValue(
       mockSocket({ status: 'open', lastMessage: { type: 'ERROR', code: 'NAME_TAKEN', message: 'Ce pseudo est déjà pris' } })
     );
-    render(<GameApp roomCode="ABCDE" pseudo="Seb" isHost={false} />);
+    render(<GameApp roomCode="ABCDE" pseudo="Seb" isHost={false} onLeaveRoom={() => {}} />);
     expect(screen.getByRole('alert')).toHaveTextContent('Ce pseudo est déjà pris');
   });
 
@@ -52,7 +52,7 @@ describe('GameApp', () => {
         lastMessage: { type: 'ROOM_STATE', phase: 'LOBBY', hostId: 'c1', players: [{ id: 'c1', name: 'Seb', alive: true, connected: true }] },
       })
     );
-    render(<GameApp roomCode="ABCDE" pseudo="Seb" isHost={false} />);
+    render(<GameApp roomCode="ABCDE" pseudo="Seb" isHost={false} onLeaveRoom={() => {}} />);
     expect(screen.getByRole('button', { name: /lancer la partie/i })).toBeInTheDocument();
   });
 
@@ -69,7 +69,7 @@ describe('GameApp', () => {
         },
       })
     );
-    render(<GameApp roomCode="ABCDE" pseudo="Seb" isHost={false} />);
+    render(<GameApp roomCode="ABCDE" pseudo="Seb" isHost={false} onLeaveRoom={() => {}} />);
     expect(screen.getByText('Goku')).toBeInTheDocument();
   });
 
@@ -95,7 +95,7 @@ describe('GameApp', () => {
         },
       })
     );
-    render(<GameApp roomCode="ABCDE" pseudo="Alice" isHost={false} />);
+    render(<GameApp roomCode="ABCDE" pseudo="Alice" isHost={false} onLeaveRoom={() => {}} />);
     fireEvent.change(screen.getByPlaceholderText(/ton indice/i), { target: { value: 'fort' } });
     fireEvent.click(screen.getByRole('button', { name: /envoyer/i }));
     expect(send).toHaveBeenCalledWith({ type: 'SUBMIT_CLUE', text: 'fort' });
@@ -119,7 +119,7 @@ describe('GameApp', () => {
         },
       })
     );
-    render(<GameApp roomCode="ABCDE" pseudo="Alice" isHost={false} />);
+    render(<GameApp roomCode="ABCDE" pseudo="Alice" isHost={false} onLeaveRoom={() => {}} />);
     fireEvent.click(screen.getByRole('button', { name: 'Bob' }));
     expect(send).toHaveBeenCalledWith({ type: 'SUBMIT_VOTE', targetId: 'p2' });
   });
@@ -143,9 +143,27 @@ describe('GameApp', () => {
         },
       })
     );
-    render(<GameApp roomCode="ABCDE" pseudo="Bob" isHost={false} />);
+    render(<GameApp roomCode="ABCDE" pseudo="Bob" isHost={false} onLeaveRoom={() => {}} />);
     fireEvent.change(screen.getByLabelText(/devine le personnage/i), { target: { value: 'Goku' } });
     fireEvent.click(screen.getByRole('button', { name: /deviner/i }));
     expect(send).toHaveBeenCalledWith({ type: 'MR_WHITE_GUESS', guess: 'Goku' });
+  });
+
+  it('renders EndScreen and calls onLeaveRoom when replay is clicked', () => {
+    const onLeaveRoom = vi.fn();
+    vi.spyOn(socketModule, 'useGameSocket').mockReturnValue(
+      mockSocket({
+        status: 'open',
+        lastMessage: {
+          type: 'ROOM_STATE',
+          phase: 'END',
+          winner: 'civil',
+          players: [{ id: 'p1', name: 'Alice', role: 'civil', character: 'Goku' }],
+        },
+      })
+    );
+    render(<GameApp roomCode="ABCDE" pseudo="Seb" isHost={false} onLeaveRoom={onLeaveRoom} />);
+    fireEvent.click(screen.getByRole('button', { name: /rejouer/i }));
+    expect(onLeaveRoom).toHaveBeenCalled();
   });
 });
