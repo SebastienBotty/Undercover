@@ -22,4 +22,30 @@ describe('VoteScreen', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Bob' }));
     expect(onVote).toHaveBeenCalledWith('p2');
   });
+
+  it('shows who was voted for after clicking, so the click has visible feedback', () => {
+    render(<VoteScreen players={players} selfId="p1" onVote={() => {}} />);
+    expect(screen.queryByText(/tu as voté/i)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Bob' }));
+    expect(screen.getByText(/tu as voté pour/i)).toBeInTheDocument();
+    expect(screen.getByText('Bob', { selector: 'strong' })).toBeInTheDocument();
+  });
+
+  it('lets the voter change their mind before everyone has voted', () => {
+    const onVote = vi.fn();
+    const players3 = [
+      { id: 'p1', name: 'Alice', alive: true },
+      { id: 'p2', name: 'Bob', alive: true },
+      { id: 'p3', name: 'Dora', alive: true },
+    ];
+    render(<VoteScreen players={players3} selfId="p1" onVote={onVote} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Bob' }));
+    fireEvent.click(screen.getByRole('button', { name: /dora/i }));
+
+    expect(onVote).toHaveBeenNthCalledWith(1, 'p2');
+    expect(onVote).toHaveBeenNthCalledWith(2, 'p3');
+    expect(screen.getByText('Dora', { selector: 'strong' })).toBeInTheDocument();
+  });
 });

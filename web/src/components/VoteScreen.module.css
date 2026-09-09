@@ -1,0 +1,13 @@
+.selected {
+  background: var(--danger-strong);
+  color: #fff;
+  border: 1px solid var(--danger-strong);
+}
+
+.selected:hover {
+  filter: brightness(1.05);
+}
+
+.check {
+  font-weight: 700;
+}
