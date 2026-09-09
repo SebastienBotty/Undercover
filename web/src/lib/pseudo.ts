@@ -6,5 +6,7 @@ export function getStoredPseudo(): string {
 }
 
 export function storePseudo(pseudo: string): void {
+  // Guard against SSR/build-time calls, where `window` doesn't exist yet.
+  if (typeof window === 'undefined') return;
   window.localStorage.setItem(STORAGE_KEY, pseudo.trim());
 }
