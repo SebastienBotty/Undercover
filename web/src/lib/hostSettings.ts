@@ -1,11 +1,18 @@
 export type SimilarityLevel = 'none' | 'close' | 'very_close';
 
+export const CLUE_TIMER_MIN_SECONDS = 30;
+export const CLUE_TIMER_MAX_SECONDS = 90;
+
 export interface RoomSettings {
   themes: string[];
   similarityLevel: SimilarityLevel;
   mrWhiteEnabled: boolean;
   /** Which anime series to draw characters from when 'anime' is in themes. Empty = all. */
   animeSeries: string[];
+  /** Whether players get a countdown to submit their clue before being eliminated. */
+  clueTimerEnabled: boolean;
+  /** Clue submission window in seconds, between CLUE_TIMER_MIN_SECONDS and CLUE_TIMER_MAX_SECONDS. */
+  clueTimerSeconds: number;
 }
 
 const STORAGE_KEY = 'undercover:hostSettings';
@@ -15,6 +22,8 @@ const DEFAULT_SETTINGS: RoomSettings = {
   similarityLevel: 'close',
   mrWhiteEnabled: false,
   animeSeries: [],
+  clueTimerEnabled: true,
+  clueTimerSeconds: 60,
 };
 
 export function getStoredHostSettings(): RoomSettings {

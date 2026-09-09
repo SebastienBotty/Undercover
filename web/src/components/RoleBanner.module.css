@@ -1,9 +1,22 @@
 .banner {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   border: 1px solid var(--panel-border);
   border-radius: 6px;
   padding: 0.5rem 0.75rem;
   font-size: 0.9rem;
   background: var(--panel-alt);
+}
+
+.photo {
+  width: 1.75rem;
+  height: 1.75rem;
+  flex-shrink: 0;
+  border-radius: 4px;
+  border: 1px solid var(--panel-border-light);
+  object-fit: cover;
+  filter: grayscale(0.5) contrast(1.05);
 }
 
 .role {

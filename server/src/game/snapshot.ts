@@ -14,6 +14,7 @@ export function buildSnapshot(state: RoomState, forPlayerId: string) {
     clues: state.clues,
     winner: state.winner,
     lastEliminatedId: state.lastEliminatedId,
+    turnDeadline: state.turnDeadline,
     players: state.players.map((p) => {
       const reveal = revealEverything || !p.alive || p.id === forPlayerId;
       return {
@@ -23,6 +24,7 @@ export function buildSnapshot(state: RoomState, forPlayerId: string) {
         connected: p.connected,
         role: reveal ? p.role : null,
         character: reveal ? p.character : null,
+        characterImage: reveal ? p.characterImage : null,
       };
     }),
   };

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { nextAliveIndex, isClueRoundComplete } from '../../src/game/clueRound';
+import { nextAliveIndex, isClueRoundComplete, nextOddRound, resolveClueTimerSeconds } from '../../src/game/clueRound';
 
 describe('nextAliveIndex', () => {
   const order = ['a', 'b', 'c', 'd'];
@@ -47,5 +47,35 @@ describe('isClueRoundComplete', () => {
   it('ignores eliminated players not in the alive set', () => {
     const clues = [{ playerId: 'a', round: 1, text: 'x' }];
     expect(isClueRoundComplete(clues, 1, new Set(['a']))).toBe(true);
+  });
+});
+
+describe('nextOddRound', () => {
+  it('moves from an even round to the very next (odd) round', () => {
+    expect(nextOddRound(2)).toBe(3);
+    expect(nextOddRound(4)).toBe(5);
+  });
+
+  it('skips ahead two rounds when already on an odd round, to land on the next odd one', () => {
+    expect(nextOddRound(1)).toBe(3);
+    expect(nextOddRound(3)).toBe(5);
+  });
+});
+
+describe('resolveClueTimerSeconds', () => {
+  it('defaults to 60s when the host requested no value', () => {
+    expect(resolveClueTimerSeconds(undefined)).toBe(60);
+  });
+
+  it('passes through a value already within [30, 90]', () => {
+    expect(resolveClueTimerSeconds(45)).toBe(45);
+  });
+
+  it('clamps values below the 30s minimum', () => {
+    expect(resolveClueTimerSeconds(5)).toBe(30);
+  });
+
+  it('clamps values above the 90s maximum', () => {
+    expect(resolveClueTimerSeconds(200)).toBe(90);
   });
 });

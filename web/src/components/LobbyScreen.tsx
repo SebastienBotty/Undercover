@@ -1,7 +1,12 @@
-'use client';
-import type { RoomSettings, SimilarityLevel } from '@/lib/hostSettings';
-import { useThemeCatalog } from '@/lib/useThemeCatalog';
-import styles from './LobbyScreen.module.css';
+"use client";
+import {
+  CLUE_TIMER_MIN_SECONDS,
+  CLUE_TIMER_MAX_SECONDS,
+  type RoomSettings,
+  type SimilarityLevel,
+} from "@/lib/hostSettings";
+import { useThemeCatalog } from "@/lib/useThemeCatalog";
+import styles from "./LobbyScreen.module.css";
 
 interface Player {
   id: string;
@@ -19,7 +24,14 @@ interface LobbyScreenProps {
   onSettingsChange: (settings: RoomSettings) => void;
 }
 
-export function LobbyScreen({ isHost, code, players, settings, onStart, onSettingsChange }: LobbyScreenProps) {
+export function LobbyScreen({
+  isHost,
+  code,
+  players,
+  settings,
+  onStart,
+  onSettingsChange,
+}: LobbyScreenProps) {
   const { themes, error: catalogError } = useThemeCatalog();
 
   function toggleTheme(theme: string) {
@@ -32,7 +44,8 @@ export function LobbyScreen({ isHost, code, players, settings, onStart, onSettin
   function toggleAnimeSeries(seriesId: string, allSeriesIds: string[]) {
     // An empty animeSeries means "no filter, every series included" -- the first toggle turns
     // that implicit "all" into an explicit list, which then behaves as a normal toggle set.
-    const currentlySelected = settings.animeSeries.length === 0 ? allSeriesIds : settings.animeSeries;
+    const currentlySelected =
+      settings.animeSeries.length === 0 ? allSeriesIds : settings.animeSeries;
     const nextSelected = currentlySelected.includes(seriesId)
       ? currentlySelected.filter((id) => id !== seriesId)
       : [...currentlySelected, seriesId];
@@ -46,7 +59,7 @@ export function LobbyScreen({ isHost, code, players, settings, onStart, onSettin
       <h3>Joueurs</h3>
       <ul className="roster">
         {players.map((p) => (
-          <li key={p.id} className={`rosterItem${!p.connected ? ' rosterItemDim' : ''}`}>
+          <li key={p.id} className={`rosterItem${!p.connected ? " rosterItemDim" : ""}`}>
             <span>{p.name}</span>
             {!p.connected && <span className="stamp">Déconnecté</span>}
           </li>
@@ -83,7 +96,15 @@ export function LobbyScreen({ isHost, code, players, settings, onStart, onSettin
 
                 {theme.series && theme.series.length > 0 && (
                   <details className={styles.seriesDetails}>
-                    <summary className={styles.seriesSummary}>
+                    <summary
+                      className={`${styles.seriesSummary}${!settings.themes.includes(theme.id) ? ` ${styles.seriesSummaryDisabled}` : ""}`}
+                      aria-disabled={!settings.themes.includes(theme.id)}
+                      onClick={(e) => {
+                        if (!settings.themes.includes(theme.id)) {
+                          e.preventDefault();
+                        }
+                      }}
+                    >
                       <span aria-hidden="true" className={styles.seriesArrow}>
                         ▸
                       </span>
@@ -91,14 +112,25 @@ export function LobbyScreen({ isHost, code, players, settings, onStart, onSettin
                     </summary>
                     <div className={styles.seriesList}>
                       {theme.series.map((series) => {
-                        const isChecked = settings.animeSeries.length === 0 || settings.animeSeries.includes(series.id);
+                        const isChecked =
+                          settings.animeSeries.length === 0 ||
+                          settings.animeSeries.includes(series.id);
                         return (
-                          <label key={series.id} htmlFor={`series-${series.id}`} className={styles.seriesRow}>
+                          <label
+                            key={series.id}
+                            htmlFor={`series-${series.id}`}
+                            className={styles.seriesRow}
+                          >
                             <input
                               id={`series-${series.id}`}
                               type="checkbox"
                               checked={isChecked}
-                              onChange={() => toggleAnimeSeries(series.id, theme.series!.map((s) => s.id))}
+                              onChange={() =>
+                                toggleAnimeSeries(
+                                  series.id,
+                                  theme.series!.map((s) => s.id),
+                                )
+                              }
                             />
                             <span>{series.label}</span>
                             <span className={styles.themeCount}>({series.count})</span>
@@ -118,7 +150,12 @@ export function LobbyScreen({ isHost, code, players, settings, onStart, onSettin
               id="similarity-select"
               className="input"
               value={settings.similarityLevel}
-              onChange={(e) => onSettingsChange({ ...settings, similarityLevel: e.target.value as SimilarityLevel })}
+              onChange={(e) =>
+                onSettingsChange({
+                  ...settings,
+                  similarityLevel: e.target.value as SimilarityLevel,
+                })
+              }
             >
               <option value="none">Aucun lien</option>
               <option value="close">Proche</option>
@@ -135,6 +172,55 @@ export function LobbyScreen({ isHost, code, players, settings, onStart, onSettin
             />
             Mr. White
           </label>
+
+          <div className="field">
+            <label htmlFor="cluetimer-checkbox" className="checkboxRow">
+              <input
+                id="cluetimer-checkbox"
+                type="checkbox"
+                checked={settings.clueTimerEnabled}
+                onChange={(e) =>
+                  onSettingsChange({ ...settings, clueTimerEnabled: e.target.checked })
+                }
+              />
+              <svg
+                aria-hidden="true"
+                className={styles.timerIcon}
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <line x1="10" y1="2" x2="14" y2="2" />
+                <line x1="12" y1="5" x2="12" y2="2" />
+                <line x1="19" y1="6" x2="20.5" y2="4.5" />
+                <circle cx="12" cy="14" r="8" />
+                <line x1="12" y1="14" x2="12" y2="10" />
+              </svg>
+              <span className={styles.srOnly}>Timer pour les indices</span>
+            </label>
+
+            {settings.clueTimerEnabled && (
+              <div className={styles.timerSliderRow}>
+                <input
+                  id="cluetimer-slider"
+                  type="range"
+                  className={styles.timerSlider}
+                  min={CLUE_TIMER_MIN_SECONDS}
+                  max={CLUE_TIMER_MAX_SECONDS}
+                  step={5}
+                  value={settings.clueTimerSeconds}
+                  aria-label="Durée du timer"
+                  onChange={(e) =>
+                    onSettingsChange({ ...settings, clueTimerSeconds: Number(e.target.value) })
+                  }
+                />
+                <span className={styles.timerValue}>{settings.clueTimerSeconds}s</span>
+              </div>
+            )}
+          </div>
 
           <button onClick={onStart} className="btn btnBlock">
             Lancer la partie

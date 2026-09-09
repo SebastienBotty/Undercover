@@ -417,7 +417,7 @@ describe('GameRoom game flow', () => {
     expect(afterGuess[0].winner).toBeNull();
   });
 
-  it('auto-submits an empty clue and advances the turn when the 60s clue timeout fires mid-round', async () => {
+  it('eliminates the player who misses the 60s clue timeout mid-round', async () => {
     const code = 'FLOW-CLUE-TIMEOUT';
     const id = env.GAME_ROOM.idFromName(code);
     const stub = env.GAME_ROOM.get(id);
@@ -440,6 +440,7 @@ describe('GameRoom game flow', () => {
     await runDurableObjectAlarm(stub);
     const clueRoundSnap = await afterAlarmA;
     expect(clueRoundSnap.phase).toBe('CLUE_ROUND');
+    expect(clueRoundSnap.turnDeadline).toEqual(expect.any(Number));
 
     const turnOrder = clueRoundSnap.turnOrder as string[];
     const firstPlayerId = turnOrder[0];
@@ -458,11 +459,67 @@ describe('GameRoom game flow', () => {
     const timeoutSnaps = await afterTimeout;
     const timeoutSnap = timeoutSnaps[0];
 
-    expect(timeoutSnap.phase).toBe('CLUE_ROUND');
-    const secondPlayerClue = timeoutSnap.clues.find((c: any) => c.playerId === secondPlayerId);
-    expect(secondPlayerClue).toMatchObject({ playerId: secondPlayerId, text: '' });
-    // Turn must have advanced past the timed-out player, to the third player in turn order.
-    expect(timeoutSnap.turnOrder[timeoutSnap.currentTurnIndex]).toBe(turnOrder[2]);
+    // The player who missed the deadline is eliminated outright, same reveal phase a vote produces.
+    expect(timeoutSnap.phase).toBe('ELIMINATION');
+    expect(timeoutSnap.lastEliminatedId).toBe(secondPlayerId);
+    expect(timeoutSnap.turnDeadline).toBeNull();
+    const secondPlayer = timeoutSnap.players.find((p: any) => p.id === secondPlayerId);
+    expect(secondPlayer.alive).toBe(false);
+    // No empty clue should have been recorded for the timed-out player.
+    expect(timeoutSnap.clues.find((c: any) => c.playerId === secondPlayerId)).toBeUndefined();
+  });
+
+  it('clamps the host-requested clue timer duration into [30, 90]s', async () => {
+    const code = 'FLOW-CLUE-TIMER-CLAMP';
+    const id = env.GAME_ROOM.idFromName(code);
+    const stub = env.GAME_ROOM.get(id);
+
+    const wsA = await joinPlayer(stub, code, 'Alice', 'a', true);
+    const wsB = await joinPlayer(stub, code, 'Bob', 'b', false, [wsA]);
+    const wsC = await joinPlayer(stub, code, 'Carl', 'c', false, [wsA, wsB]);
+    const sockets: Record<string, WebSocket> = { a: wsA, b: wsB, c: wsC };
+
+    const started = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+    wsA.send(
+      JSON.stringify({
+        type: 'START_GAME',
+        settings: { themes: ['anime'], similarityLevel: 'none', mrWhiteEnabled: false, clueTimerEnabled: true, clueTimerSeconds: 200 },
+      })
+    );
+    const [startedSnap] = await started;
+    expect(startedSnap.settings.clueTimerSeconds).toBe(90);
+  });
+
+  it('never sets a turn deadline when the host disables the clue timer', async () => {
+    const code = 'FLOW-CLUE-TIMER-DISABLED';
+    const id = env.GAME_ROOM.idFromName(code);
+    const stub = env.GAME_ROOM.get(id);
+
+    const wsA = await joinPlayer(stub, code, 'Alice', 'a', true);
+    const wsB = await joinPlayer(stub, code, 'Bob', 'b', false, [wsA]);
+    const wsC = await joinPlayer(stub, code, 'Carl', 'c', false, [wsA, wsB]);
+    const sockets: Record<string, WebSocket> = { a: wsA, b: wsB, c: wsC };
+
+    const started = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+    wsA.send(
+      JSON.stringify({
+        type: 'START_GAME',
+        settings: { themes: ['anime'], similarityLevel: 'none', mrWhiteEnabled: false, clueTimerEnabled: false },
+      })
+    );
+    await started;
+
+    const afterAlarmA = waitForMessage(wsA);
+    await runDurableObjectAlarm(stub);
+    const clueRoundSnap = await afterAlarmA;
+    expect(clueRoundSnap.phase).toBe('CLUE_ROUND');
+    expect(clueRoundSnap.turnDeadline).toBeNull();
+
+    const firstPlayerId = (clueRoundSnap.turnOrder as string[])[0];
+    const afterFirstClue = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+    sockets[firstPlayerId].send(JSON.stringify({ type: 'SUBMIT_CLUE', text: 'clue' }));
+    const [afterFirstClueSnap] = await afterFirstClue;
+    expect(afterFirstClueSnap.turnDeadline).toBeNull();
   });
 
   it('lets the host restart a finished game back into the lobby, but rejects non-hosts', async () => {
@@ -527,7 +584,9 @@ describe('GameRoom game flow', () => {
     expect(restartSnap.hostId).toBe('a');
     expect(restartSnap.players).toHaveLength(3);
     expect(restartSnap.players.every((p: any) => p.alive === true)).toBe(true);
-    expect(restartSnap.players.every((p: any) => p.role === null && p.character === null)).toBe(true);
+    expect(
+      restartSnap.players.every((p: any) => p.role === null && p.character === null && p.characterImage === null)
+    ).toBe(true);
   });
 
   it('rejects RESTART_GAME outside the END phase', async () => {

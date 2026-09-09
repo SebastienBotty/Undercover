@@ -10,6 +10,10 @@ export interface RoomSettings {
   mrWhiteEnabled: boolean;
   /** Which anime series to draw characters from when 'anime' is in themes. Empty/omitted = all. */
   animeSeries?: string[];
+  /** Whether players get a countdown to submit their clue before being eliminated. Default true. */
+  clueTimerEnabled?: boolean;
+  /** Clue submission window in seconds, clamped to [30, 90]. Default 60. */
+  clueTimerSeconds?: number;
 }
 
 export interface Player {
@@ -17,6 +21,7 @@ export interface Player {
   name: string;
   role: Role | null;
   character: string | null;
+  characterImage: string | null;
   alive: boolean;
   connected: boolean;
 }
@@ -40,4 +45,6 @@ export interface RoomState {
   round: number;
   winner: Role | null;
   lastEliminatedId: string | null;
+  /** Unix ms timestamp when the current player's clue submission window closes. Null outside CLUE_ROUND. */
+  turnDeadline: number | null;
 }

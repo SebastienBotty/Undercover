@@ -1,0 +1,31 @@
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.timer {
+  font-family: var(--font-display);
+  font-size: 1rem;
+  color: var(--accent-strong);
+  border: 1.5px solid var(--accent);
+  border-radius: 999px;
+  padding: 0.15rem 0.7rem;
+  white-space: nowrap;
+}
+
+.timerUrgent {
+  color: var(--danger-strong);
+  border-color: var(--danger-strong);
+  animation: pulse 1s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}

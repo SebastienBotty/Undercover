@@ -3,7 +3,7 @@ import type { Role, RoomSettings, RoomState } from './types';
 import type { ClientMessage } from './messages';
 import { buildSnapshot } from './game/snapshot';
 import { assignRoles, buildTurnOrder } from './game/roles';
-import { nextAliveIndex, isClueRoundComplete } from './game/clueRound';
+import { nextAliveIndex, isClueRoundComplete, nextOddRound, resolveClueTimerSeconds } from './game/clueRound';
 import { tallyVotes, checkWinCondition, checkMrWhiteGuess } from './game/voting';
 import { selectCharacterPair } from './characters/selectPair';
 import { CHARACTERS } from './characters/data';
@@ -85,9 +85,9 @@ export class GameRoom extends DurableObject {
 
     if (room.phase === 'ROLE_REVEAL') {
       room.phase = 'CLUE_ROUND';
+      await this.scheduleClueTimeout();
       await this.saveRoom();
       this.broadcast();
-      await this.scheduleClueTimeout();
       return;
     }
 
@@ -100,12 +100,19 @@ export class GameRoom extends DurableObject {
 
     if (room.phase === 'CLUE_ROUND') {
       const playerId = room.turnOrder[room.currentTurnIndex];
-      await this.applyClue(playerId, '');
+      await this.enterEliminationPhase(playerId);
     }
   }
 
   private async scheduleClueTimeout() {
-    await this.ctx.storage.setAlarm(Date.now() + 60_000);
+    const room = this.room!;
+    if (!room.settings.clueTimerEnabled) {
+      room.turnDeadline = null;
+      return;
+    }
+    const deadline = Date.now() + resolveClueTimerSeconds(room.settings.clueTimerSeconds) * 1000;
+    room.turnDeadline = deadline;
+    await this.ctx.storage.setAlarm(deadline);
   }
 
   private async handleStartGame(playerId: string, settings: RoomSettings) {
@@ -148,10 +155,17 @@ export class GameRoom extends DurableObject {
     for (const player of room.players) {
       const role = roles[player.id];
       player.role = role;
-      player.character = role === 'civil' ? civilCharacter.name : role === 'undercover' ? undercoverCharacter.name : null;
+      const assignedCharacter = role === 'civil' ? civilCharacter : role === 'undercover' ? undercoverCharacter : null;
+      player.character = assignedCharacter?.name ?? null;
+      player.characterImage = assignedCharacter?.image ?? null;
     }
 
-    room.settings = { ...settings, similarityLevel: levelUsed };
+    room.settings = {
+      ...settings,
+      similarityLevel: levelUsed,
+      clueTimerEnabled: settings.clueTimerEnabled ?? true,
+      clueTimerSeconds: resolveClueTimerSeconds(settings.clueTimerSeconds),
+    };
     room.turnOrder = buildTurnOrder(playerIds);
     room.currentTurnIndex = 0;
     room.round = 1;
@@ -159,6 +173,7 @@ export class GameRoom extends DurableObject {
     room.votes = {};
     room.winner = null;
     room.lastEliminatedId = null;
+    room.turnDeadline = null;
     room.phase = 'ROLE_REVEAL';
 
     await this.saveRoom();
@@ -199,6 +214,7 @@ export class GameRoom extends DurableObject {
       // so only an even round number after completion actually opens the vote.
       if (room.round % CLUE_ROUNDS_PER_VOTE === 0) {
         room.phase = 'VOTE';
+        room.turnDeadline = null;
         await this.saveRoom();
         this.broadcast();
         return;
@@ -206,16 +222,16 @@ export class GameRoom extends DurableObject {
 
       room.round += 1;
       room.currentTurnIndex = nextAliveIndex(room.turnOrder, aliveIds, -1);
+      await this.scheduleClueTimeout();
       await this.saveRoom();
       this.broadcast();
-      await this.scheduleClueTimeout();
       return;
     }
 
     room.currentTurnIndex = nextAliveIndex(room.turnOrder, aliveIds, room.currentTurnIndex);
+    await this.scheduleClueTimeout();
     await this.saveRoom();
     this.broadcast();
-    await this.scheduleClueTimeout();
   }
 
   private async handleSubmitVote(playerId: string, targetId: string) {
@@ -256,19 +272,28 @@ export class GameRoom extends DurableObject {
       return;
     }
 
+    await this.enterEliminationPhase(eliminatedId);
+  }
+
+  /**
+   * Marks a player eliminated (by vote or by clue-timeout) and enters the ELIMINATION reveal
+   * phase. Broadcasts the reveal to every client first, then resolves what comes next
+   * (CLUE_ROUND/END, or a Mr. White guess window) via alarm(). Mr. White gets a real 60s
+   * window to type a guess (matching the clue-submission timeout); an ordinary elimination
+   * only needs a short reveal pause before the game moves on. If a Mr. White guess arrives
+   * before the alarm fires, handleMrWhiteGuess resolves the room itself and schedules its
+   * own follow-up alarm (or reaches END, needing none), which replaces this one -- Durable
+   * Object alarms replace rather than stack, so this alarm becoming a no-op by the time it
+   * fires (phase no longer ELIMINATION) is safe.
+   */
+  private async enterEliminationPhase(eliminatedId: string) {
+    const room = this.room!;
     const eliminatedPlayer = room.players.find((p) => p.id === eliminatedId)!;
     eliminatedPlayer.alive = false;
     room.lastEliminatedId = eliminatedId;
     room.phase = 'ELIMINATION';
+    room.turnDeadline = null;
 
-    // Broadcast the ELIMINATION reveal to every client first, then resolve what comes next
-    // (CLUE_ROUND/END, or a Mr. White guess window) via alarm(). Mr. White gets a real 60s
-    // window to type a guess (matching the clue-submission timeout); an ordinary elimination
-    // only needs a short reveal pause before the game moves on. If a Mr. White guess arrives
-    // before the alarm fires, handleMrWhiteGuess resolves the room itself and schedules its
-    // own follow-up alarm (or reaches END, needing none), which replaces this one -- Durable
-    // Object alarms replace rather than stack, so this alarm becoming a no-op by the time it
-    // fires (phase no longer ELIMINATION) is safe.
     await this.saveRoom();
     this.broadcast();
     const revealDelayMs = eliminatedPlayer.role === 'mrwhite' ? 60_000 : 5_000;
@@ -287,6 +312,7 @@ export class GameRoom extends DurableObject {
     if (checkMrWhiteGuess(guess, civilCharacter)) {
       room.winner = 'mrwhite';
       room.phase = 'END';
+      room.turnDeadline = null;
     } else {
       await this.resolveAfterElimination(room);
     }
@@ -309,6 +335,7 @@ export class GameRoom extends DurableObject {
     for (const player of room.players) {
       player.role = null;
       player.character = null;
+      player.characterImage = null;
       player.alive = true;
     }
     room.phase = 'LOBBY';
@@ -319,6 +346,7 @@ export class GameRoom extends DurableObject {
     room.round = 0;
     room.winner = null;
     room.lastEliminatedId = null;
+    room.turnDeadline = null;
 
     await this.saveRoom();
     this.broadcast();
@@ -331,9 +359,10 @@ export class GameRoom extends DurableObject {
     if (winner) {
       room.winner = winner;
       room.phase = 'END';
+      room.turnDeadline = null;
       return;
     }
-    room.round += 1;
+    room.round = nextOddRound(room.round);
     const aliveIds = new Set(room.players.filter((p) => p.alive).map((p) => p.id));
     room.currentTurnIndex = nextAliveIndex(room.turnOrder, aliveIds, -1);
     room.phase = 'CLUE_ROUND';
@@ -371,6 +400,7 @@ export class GameRoom extends DurableObject {
         round: 0,
         winner: null,
         lastEliminatedId: null,
+        turnDeadline: null,
       };
     }
 
@@ -400,6 +430,7 @@ export class GameRoom extends DurableObject {
         name: msg.name,
         role: null,
         character: null,
+        characterImage: null,
         alive: true,
         connected: true,
       });

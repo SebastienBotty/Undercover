@@ -86,7 +86,13 @@ export function GameApp({ roomCode, pseudo, isHost, onLeaveRoom }: GameAppProps)
       );
     }
     if (roomState.phase === 'ROLE_REVEAL') {
-      return <RoleRevealScreen role={me?.role ?? null} character={me?.character ?? null} />;
+      return (
+        <RoleRevealScreen
+          role={me?.role ?? null}
+          character={me?.character ?? null}
+          characterImage={me?.characterImage ?? null}
+        />
+      );
     }
     if (roomState.phase === 'CLUE_ROUND') {
       return (
@@ -96,6 +102,7 @@ export function GameApp({ roomCode, pseudo, isHost, onLeaveRoom }: GameAppProps)
           currentTurnIndex={roomState.currentTurnIndex}
           clues={roomState.clues}
           round={roomState.round}
+          turnDeadline={roomState.turnDeadline}
           selfId={getOrCreateClientId()}
           onSubmitClue={(text) => send({ type: 'SUBMIT_CLUE', text })}
         />
@@ -146,7 +153,11 @@ export function GameApp({ roomCode, pseudo, isHost, onLeaveRoom }: GameAppProps)
           </p>
         )}
         {roomState && PHASES_WITH_ROLE_BANNER.includes(roomState.phase) && (
-          <RoleBanner role={me?.role ?? null} character={me?.character ?? null} />
+          <RoleBanner
+            role={me?.role ?? null}
+            character={me?.character ?? null}
+            characterImage={me?.characterImage ?? null}
+          />
         )}
         {renderPhase()}
       </div>

@@ -6,7 +6,14 @@ describe('host settings storage', () => {
 
   it('returns sensible defaults when nothing is stored', () => {
     const settings = getStoredHostSettings();
-    expect(settings).toEqual({ themes: [], similarityLevel: 'close', mrWhiteEnabled: false, animeSeries: [] });
+    expect(settings).toEqual({
+      themes: [],
+      similarityLevel: 'close',
+      mrWhiteEnabled: false,
+      animeSeries: [],
+      clueTimerEnabled: true,
+      clueTimerSeconds: 60,
+    });
   });
 
   it('stores and retrieves the last used settings', () => {
@@ -15,20 +22,27 @@ describe('host settings storage', () => {
       similarityLevel: 'very_close',
       mrWhiteEnabled: true,
       animeSeries: ['one-piece', 'naruto'],
+      clueTimerEnabled: false,
+      clueTimerSeconds: 45,
     });
     expect(getStoredHostSettings()).toEqual({
       themes: ['anime', 'films'],
       similarityLevel: 'very_close',
       mrWhiteEnabled: true,
       animeSeries: ['one-piece', 'naruto'],
+      clueTimerEnabled: false,
+      clueTimerSeconds: 45,
     });
   });
 
-  it('defaults animeSeries to an empty array for settings stored before this field existed', () => {
+  it('defaults animeSeries and the clue timer for settings stored before those fields existed', () => {
     window.localStorage.setItem(
       'undercover:hostSettings',
       JSON.stringify({ themes: ['anime'], similarityLevel: 'close', mrWhiteEnabled: false })
     );
-    expect(getStoredHostSettings().animeSeries).toEqual([]);
+    const settings = getStoredHostSettings();
+    expect(settings.animeSeries).toEqual([]);
+    expect(settings.clueTimerEnabled).toBe(true);
+    expect(settings.clueTimerSeconds).toBe(60);
   });
 });

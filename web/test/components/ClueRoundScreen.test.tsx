@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import { ClueRoundScreen } from '@/components/ClueRoundScreen';
 
 const players = [
@@ -60,5 +60,49 @@ describe('ClueRoundScreen', () => {
     expect(screen.getByText(/alice/i)).toBeInTheDocument();
     expect(screen.getByText(/fort/)).toBeInTheDocument();
     expect(screen.queryByText(/ne-devrait-pas-apparaitre/)).not.toBeInTheDocument();
+  });
+
+  it('shows a countdown derived from the turn deadline', () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date(2024, 0, 1, 0, 0, 0));
+      render(
+        <ClueRoundScreen
+          players={players}
+          turnOrder={['p1', 'p2']}
+          currentTurnIndex={1}
+          clues={[]}
+          round={1}
+          turnDeadline={Date.now() + 42_000}
+          selfId="p1"
+          onSubmitClue={() => {}}
+        />
+      );
+      expect(screen.getByText(/42s/)).toBeInTheDocument();
+
+      vi.setSystemTime(new Date(2024, 0, 1, 0, 0, 5));
+      act(() => {
+        vi.advanceTimersByTime(250);
+      });
+      expect(screen.getByText(/37s/)).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('shows no countdown when there is no turn deadline', () => {
+    render(
+      <ClueRoundScreen
+        players={players}
+        turnOrder={['p1', 'p2']}
+        currentTurnIndex={1}
+        clues={[]}
+        round={1}
+        turnDeadline={null}
+        selfId="p1"
+        onSubmitClue={() => {}}
+      />
+    );
+    expect(screen.queryByText(/\ds/)).not.toBeInTheDocument();
   });
 });

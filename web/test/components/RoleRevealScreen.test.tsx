@@ -20,4 +20,14 @@ describe('RoleRevealScreen', () => {
     expect(screen.getByText(/mr\. white/i)).toBeInTheDocument();
     expect(screen.queryByText('Goku')).not.toBeInTheDocument();
   });
+
+  it('shows the character photo when one is provided', () => {
+    render(<RoleRevealScreen role="civil" character="Goku" characterImage="https://example.com/goku.jpg" />);
+    expect(screen.getByRole('img')).toHaveAttribute('src', 'https://example.com/goku.jpg');
+  });
+
+  it('renders without a photo when none is provided', () => {
+    render(<RoleRevealScreen role="civil" character="Goku" characterImage={null} />);
+    expect(screen.queryByRole('img')).not.toBeInTheDocument();
+  });
 });
