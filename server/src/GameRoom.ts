@@ -240,15 +240,17 @@ export class GameRoom extends DurableObject {
     room.phase = 'ELIMINATION';
 
     // Broadcast the ELIMINATION reveal to every client first, then resolve what comes next
-    // (CLUE_ROUND/END, or a Mr. White guess window) after a short reveal delay via alarm() --
-    // this applies uniformly to both the Mr. White and ordinary-elimination cases. If a Mr.
-    // White guess arrives before the alarm fires, handleMrWhiteGuess resolves the room itself
-    // and schedules its own follow-up alarm (or reaches END, needing none), which replaces this
-    // one -- Durable Object alarms replace rather than stack, so this alarm becoming a no-op by
-    // the time it fires (phase no longer ELIMINATION) is safe.
+    // (CLUE_ROUND/END, or a Mr. White guess window) via alarm(). Mr. White gets a real 60s
+    // window to type a guess (matching the clue-submission timeout); an ordinary elimination
+    // only needs a short reveal pause before the game moves on. If a Mr. White guess arrives
+    // before the alarm fires, handleMrWhiteGuess resolves the room itself and schedules its
+    // own follow-up alarm (or reaches END, needing none), which replaces this one -- Durable
+    // Object alarms replace rather than stack, so this alarm becoming a no-op by the time it
+    // fires (phase no longer ELIMINATION) is safe.
     await this.saveRoom();
     this.broadcast();
-    await this.ctx.storage.setAlarm(Date.now() + 5_000);
+    const revealDelayMs = eliminatedPlayer.role === 'mrwhite' ? 60_000 : 5_000;
+    await this.ctx.storage.setAlarm(Date.now() + revealDelayMs);
   }
 
   private async handleMrWhiteGuess(playerId: string, guess: string) {
