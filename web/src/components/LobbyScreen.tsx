@@ -29,20 +29,26 @@ export function LobbyScreen({ isHost, code, players, settings, onStart, onSettin
 
   return (
     <div>
-      <h2>Salle {code}</h2>
-      <h3>Lobby</h3>
-      <ul>
+      <span className="eyebrow">Salle</span>
+      <p className="roomCode">{code}</p>
+      <h3>Joueurs</h3>
+      <ul className="roster">
         {players.map((p) => (
-          <li key={p.id}>{p.name}{!p.connected ? ' (déconnecté)' : ''}</li>
+          <li key={p.id} className={`rosterItem${!p.connected ? ' rosterItemDim' : ''}`}>
+            <span>{p.name}</span>
+            {!p.connected && <span className="stamp">Déconnecté</span>}
+          </li>
         ))}
       </ul>
 
       {isHost && (
-        <div>
-          <fieldset>
-            <legend>Thèmes</legend>
+        <div className="field">
+          <hr className="divider" />
+          <h3>Réglages</h3>
+          <fieldset className="field">
+            <legend className="muted">Thèmes</legend>
             {AVAILABLE_THEMES.map((theme) => (
-              <label key={theme} htmlFor={`theme-${theme}`}>
+              <label key={theme} htmlFor={`theme-${theme}`} className="checkboxRow">
                 <input
                   id={`theme-${theme}`}
                   type="checkbox"
@@ -54,18 +60,21 @@ export function LobbyScreen({ isHost, code, players, settings, onStart, onSettin
             ))}
           </fieldset>
 
-          <label htmlFor="similarity-select">Similarité</label>
-          <select
-            id="similarity-select"
-            value={settings.similarityLevel}
-            onChange={(e) => onSettingsChange({ ...settings, similarityLevel: e.target.value as SimilarityLevel })}
-          >
-            <option value="none">Aucun lien</option>
-            <option value="close">Proche</option>
-            <option value="very_close">Très proche</option>
-          </select>
+          <div className="field">
+            <label htmlFor="similarity-select">Similarité</label>
+            <select
+              id="similarity-select"
+              className="input"
+              value={settings.similarityLevel}
+              onChange={(e) => onSettingsChange({ ...settings, similarityLevel: e.target.value as SimilarityLevel })}
+            >
+              <option value="none">Aucun lien</option>
+              <option value="close">Proche</option>
+              <option value="very_close">Très proche</option>
+            </select>
+          </div>
 
-          <label htmlFor="mrwhite-checkbox">
+          <label htmlFor="mrwhite-checkbox" className="checkboxRow">
             <input
               id="mrwhite-checkbox"
               type="checkbox"
@@ -75,7 +84,9 @@ export function LobbyScreen({ isHost, code, players, settings, onStart, onSettin
             Mr. White
           </label>
 
-          <button onClick={onStart}>Lancer la partie</button>
+          <button onClick={onStart} className="btn btnBlock">
+            Lancer la partie
+          </button>
         </div>
       )}
     </div>

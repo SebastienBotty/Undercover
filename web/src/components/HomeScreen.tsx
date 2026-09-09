@@ -14,16 +14,30 @@ export function HomeScreen({ onEnterRoom }: HomeScreenProps) {
 
   if (!pseudo) {
     return (
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (draftPseudo.trim()) setPseudo(draftPseudo);
-        }}
-      >
-        <label htmlFor="pseudo-input">Choisis un pseudo</label>
-        <input id="pseudo-input" value={draftPseudo} onChange={(e) => setDraftPseudo(e.target.value)} />
-        <button type="submit">Continuer</button>
-      </form>
+      <main className="shell">
+        <div className="card">
+          <span className="eyebrow">Undercover</span>
+          <h2>Qui es-tu ce soir ?</h2>
+          <form
+            className="field"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (draftPseudo.trim()) setPseudo(draftPseudo);
+            }}
+          >
+            <label htmlFor="pseudo-input">Choisis un pseudo</label>
+            <input
+              id="pseudo-input"
+              className="input"
+              value={draftPseudo}
+              onChange={(e) => setDraftPseudo(e.target.value)}
+            />
+            <button type="submit" className="btn btnBlock">
+              Continuer
+            </button>
+          </form>
+        </div>
+      </main>
     );
   }
 
@@ -44,15 +58,39 @@ export function HomeScreen({ onEnterRoom }: HomeScreenProps) {
   }
 
   return (
-    <div>
-      <p>Pseudo : {pseudo} <button onClick={() => setPseudo('')}>changer</button></p>
-      <button onClick={handleCreateRoom}>Créer une salle</button>
-      {createRoomError && <p role="alert">{createRoomError}</p>}
-      <div>
-        <label htmlFor="join-code-input">Code de la salle</label>
-        <input id="join-code-input" value={joinCode} onChange={(e) => setJoinCode(e.target.value)} />
-        <button onClick={handleJoinRoom}>Rejoindre</button>
+    <main className="shell">
+      <div className="card">
+        <span className="eyebrow">Undercover</span>
+        <h2>Prêt à jouer, {pseudo} ?</h2>
+        <p className="muted">
+          <button className="btnGhost btn" onClick={() => setPseudo('')}>changer de pseudo</button>
+        </p>
+
+        <button onClick={handleCreateRoom} className="btn btnBlock">
+          Créer une salle
+        </button>
+        {createRoomError && (
+          <p role="alert" className="alert">
+            {createRoomError}
+          </p>
+        )}
+
+        <hr className="divider" />
+
+        <h2>Rejoindre une salle</h2>
+        <div className="field">
+          <label htmlFor="join-code-input">Code de la salle</label>
+          <input
+            id="join-code-input"
+            className="input"
+            value={joinCode}
+            onChange={(e) => setJoinCode(e.target.value)}
+          />
+          <button onClick={handleJoinRoom} className="btn btnGhost btnBlock">
+            Rejoindre
+          </button>
+        </div>
       </div>
-    </div>
+    </main>
   );
 }

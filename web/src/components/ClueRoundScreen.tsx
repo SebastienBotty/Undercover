@@ -31,13 +31,15 @@ export function ClueRoundScreen({ players, turnOrder, currentTurnIndex, clues, r
 
   return (
     <div>
-      <h2>Manche {round}</h2>
-      <ul>
+      <span className="eyebrow">Manche {round}</span>
+      <h2>Indices</h2>
+      <ul className="roster">
         {roundClues.map((c) => {
           const player = players.find((p) => p.id === c.playerId);
           return (
-            <li key={c.playerId}>
-              {player?.name}: {c.text || '(pas de réponse)'}
+            <li key={c.playerId} className="rosterItem">
+              <span>{player?.name}</span>
+              <span className="muted">{c.text || '(pas de réponse)'}</span>
             </li>
           );
         })}
@@ -45,17 +47,25 @@ export function ClueRoundScreen({ players, turnOrder, currentTurnIndex, clues, r
 
       {isMyTurn ? (
         <form
+          className="field"
           onSubmit={(e) => {
             e.preventDefault();
             onSubmitClue(draft);
             setDraft('');
           }}
         >
-          <input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Ton indice" />
-          <button type="submit">Envoyer</button>
+          <input
+            className="input"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            placeholder="Ton indice"
+          />
+          <button type="submit" className="btn btnBlock">
+            Envoyer
+          </button>
         </form>
       ) : (
-        <p>Au tour de {currentPlayer?.name}...</p>
+        <p className="muted">Au tour de {currentPlayer?.name}...</p>
       )}
     </div>
   );

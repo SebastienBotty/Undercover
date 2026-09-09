@@ -24,15 +24,21 @@ const WINNER_LABEL: Record<Role, string> = {
 export function EndScreen({ winner, players, onReplay }: EndScreenProps) {
   return (
     <div>
+      <span className="eyebrow">Affaire classée</span>
       <h2>{winner ? WINNER_LABEL[winner] : 'Partie terminée'}</h2>
-      <ul>
+      <ul className="roster">
         {players.map((p) => (
-          <li key={p.id}>
-            {p.name} — {p.role} {p.character ? `(${p.character})` : ''}
+          <li key={p.id} className="rosterItem">
+            <span>{p.name}</span>
+            <span className="muted">
+              {p.role} {p.character ? `(${p.character})` : ''}
+            </span>
           </li>
         ))}
       </ul>
-      <button onClick={onReplay}>Quitter</button>
+      <button onClick={onReplay} className="btn btnGhost btnBlock">
+        Quitter
+      </button>
     </div>
   );
 }

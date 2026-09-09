@@ -28,12 +28,12 @@ describe('GameApp', () => {
     expect(send).toHaveBeenCalledWith(expect.objectContaining({ type: 'JOIN_ROOM', code: 'ABCDE', name: 'Seb' }));
   });
 
-  it('renders the lobby placeholder when the room state phase is LOBBY', () => {
+  it('renders the lobby screen when the room state phase is LOBBY', () => {
     vi.spyOn(socketModule, 'useGameSocket').mockReturnValue(
-      mockSocket({ status: 'open', lastMessage: { type: 'ROOM_STATE', phase: 'LOBBY', players: [] } })
+      mockSocket({ status: 'open', lastMessage: { type: 'ROOM_STATE', phase: 'LOBBY', code: 'ABCDE', players: [] } })
     );
     render(<GameApp roomCode="ABCDE" pseudo="Seb" isHost={false} onLeaveRoom={() => {}} />);
-    expect(screen.getByText(/lobby/i)).toBeInTheDocument();
+    expect(screen.getByText(/joueurs/i)).toBeInTheDocument();
   });
 
   it('shows the error message when an ERROR message is received', () => {

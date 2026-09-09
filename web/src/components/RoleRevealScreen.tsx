@@ -1,4 +1,5 @@
 'use client';
+import styles from './RoleRevealScreen.module.css';
 
 type Role = 'civil' | 'undercover' | 'mrwhite';
 
@@ -14,21 +15,31 @@ const ROLE_LABEL: Record<Role, string> = {
 };
 
 export function RoleRevealScreen({ role, character }: RoleRevealScreenProps) {
-  if (!role) return <p>Chargement de ton rôle...</p>;
+  if (!role) return <p className="muted">Chargement de ton rôle...</p>;
 
   if (role === 'mrwhite') {
     return (
       <div>
+        <span className="eyebrow">Dossier confidentiel</span>
         <h2>Tu es Mr. White</h2>
-        <p>Tu n'as aucun personnage. Bluffe pour ne pas te faire repérer !</p>
+        <div className={styles.dossier}>
+          <div className={styles.censorBar} />
+          <div className={`${styles.censorBar} ${styles.censorBarShort}`} />
+          <p className={styles.blank}>Identité classifiée</p>
+        </div>
+        <p className={styles.helper}>Tu n'as aucun personnage. Bluffe pour ne pas te faire repérer !</p>
       </div>
     );
   }
 
   return (
     <div>
+      <span className="eyebrow">Dossier confidentiel</span>
       <h2>Tu es {ROLE_LABEL[role]}</h2>
-      <p>{character}</p>
+      <div className={styles.dossier}>
+        <div className={styles.censorBar} />
+        <p className={styles.identity}>{character}</p>
+      </div>
     </div>
   );
 }

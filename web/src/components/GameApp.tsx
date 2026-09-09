@@ -47,7 +47,14 @@ export function GameApp({ roomCode, pseudo, isHost, onLeaveRoom }: GameAppProps)
   }, [lastMessage]);
 
   if (status === 'connecting' || status === 'idle') {
-    return <p>Connexion à la salle {roomCode}...</p>;
+    return (
+      <main className="shell">
+        <div className="card">
+          <span className="eyebrow">Undercover</span>
+          <p className="muted">Connexion à la salle {roomCode}...</p>
+        </div>
+      </main>
+    );
   }
 
   function handleSettingsChange(next: RoomSettings) {
@@ -60,7 +67,7 @@ export function GameApp({ roomCode, pseudo, isHost, onLeaveRoom }: GameAppProps)
   }
 
   function renderPhase() {
-    if (!roomState) return <p>En attente des données de la salle...</p>;
+    if (!roomState) return <p className="muted">En attente des données de la salle...</p>;
     if (roomState.phase === 'LOBBY') {
       return (
         <LobbyScreen
@@ -112,13 +119,19 @@ export function GameApp({ roomCode, pseudo, isHost, onLeaveRoom }: GameAppProps)
     if (roomState.phase === 'END') {
       return <EndScreen winner={roomState.winner} players={roomState.players} onReplay={onLeaveRoom} />;
     }
-    return <p>Connecté ({roomState.phase})</p>; // fallback for phases not wired up yet
+    return <p className="muted">Connecté ({roomState.phase})</p>; // fallback for phases not wired up yet
   }
 
   return (
-    <div>
-      {errorMessage && <p role="alert">{errorMessage}</p>}
-      {renderPhase()}
-    </div>
+    <main className="shell">
+      <div className="card">
+        {errorMessage && (
+          <p role="alert" className="alert">
+            {errorMessage}
+          </p>
+        )}
+        {renderPhase()}
+      </div>
+    </main>
   );
 }
