@@ -2,6 +2,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useGameSocket } from '@/lib/useGameSocket';
 import { getOrCreateClientId } from '@/lib/clientId';
+import { LobbyScreen } from '@/components/LobbyScreen';
+import { getStoredHostSettings, storeHostSettings, type RoomSettings } from '@/lib/hostSettings';
 
 interface GameAppProps {
   roomCode: string;
@@ -15,6 +17,7 @@ export function GameApp({ roomCode, pseudo, isHost }: GameAppProps) {
   const { status, lastMessage, send } = useGameSocket(wsUrl);
   const [roomState, setRoomState] = useState<any | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [settings, setSettings] = useState<RoomSettings>(() => getStoredHostSettings());
   const joinedRef = useRef(false);
 
   useEffect(() => {
@@ -41,9 +44,28 @@ export function GameApp({ roomCode, pseudo, isHost }: GameAppProps) {
     return <p>Connexion à la salle {roomCode}...</p>;
   }
 
+  function handleSettingsChange(next: RoomSettings) {
+    setSettings(next);
+    storeHostSettings(next);
+  }
+
+  function handleStart() {
+    send({ type: 'START_GAME', settings });
+  }
+
   function renderPhase() {
     if (!roomState) return <p>En attente des données de la salle...</p>;
-    if (roomState.phase === 'LOBBY') return <p>En attente dans le lobby...</p>; // replaced by LobbyScreen in Task 13
+    if (roomState.phase === 'LOBBY') {
+      return (
+        <LobbyScreen
+          isHost={roomState.hostId === getOrCreateClientId()}
+          players={roomState.players}
+          settings={settings}
+          onStart={handleStart}
+          onSettingsChange={handleSettingsChange}
+        />
+      );
+    }
     return <p>Connecté ({roomState.phase})</p>; // fallback for phases not wired up yet
   }
 

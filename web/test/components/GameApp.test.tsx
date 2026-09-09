@@ -43,4 +43,16 @@ describe('GameApp', () => {
     render(<GameApp roomCode="ABCDE" pseudo="Seb" isHost={false} />);
     expect(screen.getByRole('alert')).toHaveTextContent('Ce pseudo est déjà pris');
   });
+
+  it('renders LobbyScreen with the host flag set when hostId matches the client id', () => {
+    window.localStorage.setItem('undercover:clientId', 'c1');
+    vi.spyOn(socketModule, 'useGameSocket').mockReturnValue(
+      mockSocket({
+        status: 'open',
+        lastMessage: { type: 'ROOM_STATE', phase: 'LOBBY', hostId: 'c1', players: [{ id: 'c1', name: 'Seb', alive: true, connected: true }] },
+      })
+    );
+    render(<GameApp roomCode="ABCDE" pseudo="Seb" isHost={false} />);
+    expect(screen.getByRole('button', { name: /lancer la partie/i })).toBeInTheDocument();
+  });
 });
