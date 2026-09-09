@@ -5,6 +5,8 @@ import { getOrCreateClientId } from '@/lib/clientId';
 import { LobbyScreen } from '@/components/LobbyScreen';
 import { RoleRevealScreen } from '@/components/RoleRevealScreen';
 import { ClueRoundScreen } from '@/components/ClueRoundScreen';
+import { VoteScreen } from '@/components/VoteScreen';
+import { EliminationScreen } from '@/components/EliminationScreen';
 import { getStoredHostSettings, storeHostSettings, type RoomSettings } from '@/lib/hostSettings';
 
 interface GameAppProps {
@@ -82,6 +84,25 @@ export function GameApp({ roomCode, pseudo, isHost }: GameAppProps) {
           round={roomState.round}
           selfId={getOrCreateClientId()}
           onSubmitClue={(text) => send({ type: 'SUBMIT_CLUE', text })}
+        />
+      );
+    }
+    if (roomState.phase === 'VOTE') {
+      return (
+        <VoteScreen
+          players={roomState.players}
+          selfId={getOrCreateClientId()}
+          onVote={(targetId) => send({ type: 'SUBMIT_VOTE', targetId })}
+        />
+      );
+    }
+    if (roomState.phase === 'ELIMINATION') {
+      return (
+        <EliminationScreen
+          players={roomState.players}
+          lastEliminatedId={roomState.lastEliminatedId}
+          selfId={getOrCreateClientId()}
+          onMrWhiteGuess={(guess) => send({ type: 'MR_WHITE_GUESS', guess })}
         />
       );
     }

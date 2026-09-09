@@ -100,4 +100,52 @@ describe('GameApp', () => {
     fireEvent.click(screen.getByRole('button', { name: /envoyer/i }));
     expect(send).toHaveBeenCalledWith({ type: 'SUBMIT_CLUE', text: 'fort' });
   });
+
+  it('renders VoteScreen and sends SUBMIT_VOTE on vote', () => {
+    window.localStorage.setItem('undercover:clientId', 'p1');
+    const send = vi.fn();
+    vi.spyOn(socketModule, 'useGameSocket').mockReturnValue(
+      mockSocket({
+        status: 'open',
+        send,
+        lastMessage: {
+          type: 'ROOM_STATE',
+          phase: 'VOTE',
+          hostId: 'p1',
+          players: [
+            { id: 'p1', name: 'Alice', alive: true, connected: true },
+            { id: 'p2', name: 'Bob', alive: true, connected: true },
+          ],
+        },
+      })
+    );
+    render(<GameApp roomCode="ABCDE" pseudo="Alice" isHost={false} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Bob' }));
+    expect(send).toHaveBeenCalledWith({ type: 'SUBMIT_VOTE', targetId: 'p2' });
+  });
+
+  it('renders EliminationScreen and sends MR_WHITE_GUESS on guess', () => {
+    window.localStorage.setItem('undercover:clientId', 'p2');
+    const send = vi.fn();
+    vi.spyOn(socketModule, 'useGameSocket').mockReturnValue(
+      mockSocket({
+        status: 'open',
+        send,
+        lastMessage: {
+          type: 'ROOM_STATE',
+          phase: 'ELIMINATION',
+          hostId: 'p1',
+          lastEliminatedId: 'p2',
+          players: [
+            { id: 'p1', name: 'Alice', alive: true, connected: true, role: null, character: null },
+            { id: 'p2', name: 'Bob', alive: false, connected: true, role: 'mrwhite', character: null },
+          ],
+        },
+      })
+    );
+    render(<GameApp roomCode="ABCDE" pseudo="Bob" isHost={false} />);
+    fireEvent.change(screen.getByLabelText(/devine le personnage/i), { target: { value: 'Goku' } });
+    fireEvent.click(screen.getByRole('button', { name: /deviner/i }));
+    expect(send).toHaveBeenCalledWith({ type: 'MR_WHITE_GUESS', guess: 'Goku' });
+  });
 });
