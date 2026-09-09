@@ -69,4 +69,19 @@ describe('useGameSocket', () => {
       clientId: 'c1',
     });
   });
+
+  it('automatically reconnects after an unexpected close', () => {
+    vi.useFakeTimers();
+    renderHook(() => useGameSocket('wss://example.com/ws?code=ABCDE'));
+    const first = MockWebSocket.instances[0];
+    act(() => first.triggerOpen());
+
+    act(() => first.close());
+    expect(MockWebSocket.instances).toHaveLength(1);
+
+    act(() => vi.advanceTimersByTime(2000));
+    expect(MockWebSocket.instances).toHaveLength(2);
+
+    vi.useRealTimers();
+  });
 });
