@@ -94,7 +94,9 @@ describe('GameRoom game flow', () => {
     }
 
     const finalSnap = voteResults[voteResults.length - 1];
-    expect(['ELIMINATION', 'END', 'CLUE_ROUND']).toContain(finalSnap.phase);
+    // Fix 1: the ELIMINATION phase must actually be broadcast (not skipped straight to the
+    // resolved next phase) before the alarm-driven reveal delay advances the game further.
+    expect(finalSnap.phase).toBe('ELIMINATION');
     const eliminatedPlayer = finalSnap.players.find((p: any) => p.id === target);
     expect(eliminatedPlayer.alive).toBe(false);
   });
@@ -218,8 +220,215 @@ describe('GameRoom game flow', () => {
     }
 
     const finalSnap = voteResults[voteResults.length - 1];
-    expect(['ELIMINATION', 'END', 'CLUE_ROUND']).toContain(finalSnap.phase);
+    expect(finalSnap.phase).toBe('ELIMINATION');
     const eliminatedPlayer = finalSnap.players.find((p: any) => p.id === target);
     expect(eliminatedPlayer.alive).toBe(false);
+  });
+
+  it('broadcasts ELIMINATION then, after the reveal alarm, resolves an ordinary elimination into a new CLUE_ROUND', async () => {
+    const code = 'FLOW-5';
+    const id = env.GAME_ROOM.idFromName(code);
+    const stub = env.GAME_ROOM.get(id);
+
+    const wsA = await joinPlayer(stub, code, 'Alice', 'a', true);
+    const wsB = await joinPlayer(stub, code, 'Bob', 'b', false, [wsA]);
+    const wsC = await joinPlayer(stub, code, 'Carl', 'c', false, [wsA, wsB]);
+
+    const started = Promise.all([waitForMessage(wsA), waitForMessage(wsB), waitForMessage(wsC)]);
+    wsA.send(
+      JSON.stringify({
+        type: 'START_GAME',
+        settings: { themes: ['anime'], similarityLevel: 'none', mrWhiteEnabled: false },
+      })
+    );
+    await started;
+
+    const afterAlarmA = waitForMessage(wsA);
+    await runDurableObjectAlarm(stub);
+    const clueRoundSnap = await afterAlarmA;
+
+    const turnOrder = clueRoundSnap.turnOrder as string[];
+    const sockets: Record<string, WebSocket> = { a: wsA, b: wsB, c: wsC };
+
+    for (const playerId of turnOrder) {
+      const ws = sockets[playerId];
+      const next = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+      ws.send(JSON.stringify({ type: 'SUBMIT_CLUE', text: `clue-from-${playerId}` }));
+      await next;
+    }
+
+    // Vote for a player who, per FLOW-5's deterministic 3-player/no-Mr.-White setup, cannot be
+    // Mr. White (there is none) -- either surviving role keeps the round going, since 1 civil +
+    // 1 undercover always remain alive after a single elimination in a 3-player game.
+    const target = turnOrder[1];
+    let eliminationSnap: any;
+    for (const playerId of turnOrder) {
+      const ws = sockets[playerId];
+      const next = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+      ws.send(JSON.stringify({ type: 'SUBMIT_VOTE', targetId: target }));
+      const results = await next;
+      eliminationSnap = results[0];
+    }
+
+    expect(eliminationSnap.phase).toBe('ELIMINATION');
+    expect(eliminationSnap.lastEliminatedId).toBe(target);
+
+    // Now let the 5s reveal alarm fire and resolve the elimination into the next phase.
+    const afterReveal = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+    await runDurableObjectAlarm(stub);
+    const resolvedSnaps = await afterReveal;
+    const resolvedSnap = resolvedSnaps[0];
+
+    // 3 players, 1 eliminated, no Mr. White: 2 alive players remain and the game must continue
+    // (checkWinCondition can't yet declare a winner with 1 civil + 1 undercover alive, or 2
+    // civils alive -- either way the round must continue).
+    expect(resolvedSnap.phase === 'CLUE_ROUND' || resolvedSnap.phase === 'END').toBe(true);
+  });
+
+  // Shared setup for the two Mr. White guess tests below: 5 players + Mr. White enabled gives
+  // 3 civils / 1 undercover / 1 Mr. White, satisfying assignRoles' civilian-majority guard
+  // (civilCount 3 > specialCount 2). Each player's OWN role is revealed in the snapshot sent to
+  // their own socket as soon as ROLE_REVEAL is broadcast (buildSnapshot reveals `p.id ===
+  // forPlayerId` regardless of phase) -- so we can read who has 'mrwhite' from the per-socket
+  // START_GAME results without waiting for END to reveal everyone.
+  async function setupMrWhiteRound(code: string) {
+    const id = env.GAME_ROOM.idFromName(code);
+    const stub = env.GAME_ROOM.get(id);
+
+    const wsA = await joinPlayer(stub, code, 'Alice', 'a', true);
+    const wsB = await joinPlayer(stub, code, 'Bob', 'b', false, [wsA]);
+    const wsC = await joinPlayer(stub, code, 'Carl', 'c', false, [wsA, wsB]);
+    const wsD = await joinPlayer(stub, code, 'Dora', 'd', false, [wsA, wsB, wsC]);
+    const wsE = await joinPlayer(stub, code, 'Eve', 'e', false, [wsA, wsB, wsC, wsD]);
+
+    const sockets: Record<string, WebSocket> = { a: wsA, b: wsB, c: wsC, d: wsD, e: wsE };
+    const order = Object.keys(sockets);
+
+    const started = Promise.all(order.map((pid) => waitForMessage(sockets[pid])));
+    wsA.send(
+      JSON.stringify({
+        type: 'START_GAME',
+        settings: { themes: ['anime'], similarityLevel: 'none', mrWhiteEnabled: true },
+      })
+    );
+    const startResults = await started;
+    expect(startResults.every((r: any) => r.phase === 'ROLE_REVEAL')).toBe(true);
+
+    const ownRole: Record<string, string | null> = {};
+    const ownCharacter: Record<string, string | null> = {};
+    order.forEach((pid, idx) => {
+      const self = startResults[idx].players.find((p: any) => p.id === pid);
+      ownRole[pid] = self.role;
+      ownCharacter[pid] = self.character;
+    });
+
+    const mrWhiteId = order.find((pid) => ownRole[pid] === 'mrwhite')!;
+    const civilId = order.find((pid) => ownRole[pid] === 'civil')!;
+    expect(mrWhiteId).toBeDefined();
+    const civilCharacter = ownCharacter[civilId]!;
+    expect(civilCharacter).toBeTruthy();
+
+    const afterAlarmA = waitForMessage(wsA);
+    await runDurableObjectAlarm(stub);
+    const clueRoundSnap = await afterAlarmA;
+    expect(clueRoundSnap.phase).toBe('CLUE_ROUND');
+
+    const turnOrder = clueRoundSnap.turnOrder as string[];
+    for (const playerId of turnOrder) {
+      const ws = sockets[playerId];
+      const next = Promise.all(order.map((pid) => waitForMessage(sockets[pid])));
+      ws.send(JSON.stringify({ type: 'SUBMIT_CLUE', text: `clue-from-${playerId}` }));
+      await next;
+    }
+
+    // Everyone votes to eliminate Mr. White.
+    const voteResults: any[] = [];
+    for (const playerId of turnOrder) {
+      const ws = sockets[playerId];
+      const next = Promise.all(order.map((pid) => waitForMessage(sockets[pid])));
+      ws.send(JSON.stringify({ type: 'SUBMIT_VOTE', targetId: mrWhiteId }));
+      const results = await next;
+      voteResults.push(results[0]);
+    }
+
+    const eliminationSnap = voteResults[voteResults.length - 1];
+    expect(eliminationSnap.phase).toBe('ELIMINATION');
+    expect(eliminationSnap.lastEliminatedId).toBe(mrWhiteId);
+
+    return { stub, sockets, order, mrWhiteId, civilCharacter };
+  }
+
+  it('resolves a correct Mr. White guess as an immediate Mr. White win', async () => {
+    const { sockets, order, mrWhiteId, civilCharacter } = await setupMrWhiteRound('FLOW-MRWHITE-CORRECT');
+
+    const guessWs = sockets[mrWhiteId];
+    const guessResult = Promise.all(order.map((pid) => waitForMessage(sockets[pid])));
+    guessWs.send(JSON.stringify({ type: 'MR_WHITE_GUESS', guess: civilCharacter }));
+    const afterGuess = await guessResult;
+
+    expect(afterGuess[0].winner).toBe('mrwhite');
+    expect(afterGuess[0].phase).toBe('END');
+  });
+
+  it('resolves an incorrect Mr. White guess by continuing the game into a new CLUE_ROUND', async () => {
+    const { sockets, order, mrWhiteId, civilCharacter } = await setupMrWhiteRound('FLOW-MRWHITE-INCORRECT');
+
+    const guessWs = sockets[mrWhiteId];
+    const guessResult = Promise.all(order.map((pid) => waitForMessage(sockets[pid])));
+    guessWs.send(JSON.stringify({ type: 'MR_WHITE_GUESS', guess: `not-${civilCharacter}` }));
+    const afterGuess = await guessResult;
+
+    // 5 players, Mr. White eliminated: 3 civils + 1 undercover remain alive, so the game must
+    // continue (checkWinCondition returns null: aliveUndercover=1 > 0 but 1 < 3).
+    expect(afterGuess[0].phase).toBe('CLUE_ROUND');
+    expect(afterGuess[0].winner).toBeNull();
+  });
+
+  it('auto-submits an empty clue and advances the turn when the 60s clue timeout fires mid-round', async () => {
+    const code = 'FLOW-CLUE-TIMEOUT';
+    const id = env.GAME_ROOM.idFromName(code);
+    const stub = env.GAME_ROOM.get(id);
+
+    const wsA = await joinPlayer(stub, code, 'Alice', 'a', true);
+    const wsB = await joinPlayer(stub, code, 'Bob', 'b', false, [wsA]);
+    const wsC = await joinPlayer(stub, code, 'Carl', 'c', false, [wsA, wsB]);
+    const sockets: Record<string, WebSocket> = { a: wsA, b: wsB, c: wsC };
+
+    const started = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+    wsA.send(
+      JSON.stringify({
+        type: 'START_GAME',
+        settings: { themes: ['anime'], similarityLevel: 'none', mrWhiteEnabled: false },
+      })
+    );
+    await started;
+
+    const afterAlarmA = waitForMessage(wsA);
+    await runDurableObjectAlarm(stub);
+    const clueRoundSnap = await afterAlarmA;
+    expect(clueRoundSnap.phase).toBe('CLUE_ROUND');
+
+    const turnOrder = clueRoundSnap.turnOrder as string[];
+    const firstPlayerId = turnOrder[0];
+    const secondPlayerId = turnOrder[1];
+
+    // First player submits a real clue (moving turn to the second player), then -- instead of
+    // the second player submitting -- let the 60s clue timeout alarm fire mid-round to exercise
+    // the CLUE_ROUND branch of alarm() (not the ROLE_REVEAL->CLUE_ROUND one already covered by
+    // other tests).
+    const afterFirstClue = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+    sockets[firstPlayerId].send(JSON.stringify({ type: 'SUBMIT_CLUE', text: `clue-from-${firstPlayerId}` }));
+    await afterFirstClue;
+
+    const afterTimeout = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+    await runDurableObjectAlarm(stub);
+    const timeoutSnaps = await afterTimeout;
+    const timeoutSnap = timeoutSnaps[0];
+
+    expect(timeoutSnap.phase).toBe('CLUE_ROUND');
+    const secondPlayerClue = timeoutSnap.clues.find((c: any) => c.playerId === secondPlayerId);
+    expect(secondPlayerClue).toMatchObject({ playerId: secondPlayerId, text: '' });
+    // Turn must have advanced past the timed-out player, to the third player in turn order.
+    expect(timeoutSnap.turnOrder[timeoutSnap.currentTurnIndex]).toBe(turnOrder[2]);
   });
 });
