@@ -99,10 +99,22 @@ Claude dans le cadre de l'implémentation : quelques thèmes (ex. anime,
 films connus, histoire) avec environ 15-20 personnages tagués chacun,
 au format JSON, facilement extensible ensuite par l'utilisateur.
 
+## Onboarding & mémorisation locale
+
+- À l'arrivée sur le site, avant de pouvoir créer ou rejoindre une
+  salle, l'utilisateur doit renseigner un pseudo. Pas de compte.
+- Le pseudo est mémorisé en `localStorage` : pré-rempli aux visites
+  suivantes, mais modifiable à tout moment avant de créer/rejoindre
+  une salle.
+- Les derniers paramètres de salle utilisés par un hôte (thèmes actifs,
+  niveau de similarité, Mr. White activé ou non) sont aussi mémorisés
+  en `localStorage` côté hôte, et pré-remplis la prochaine fois qu'il
+  crée une salle (modifiables avant de lancer la partie).
+
 ## Salle & joueurs
 
-- Rejoindre une partie : code de salle à 4-6 caractères + pseudo, pas
-  de compte.
+- Rejoindre une partie : code de salle à 4-6 caractères (le pseudo est
+  déjà connu depuis l'onboarding).
 - 3 à 10 joueurs par salle (minimum nécessaire pour garantir au moins
   un Civil de plus que le nombre d'Undercover + Mr. White ; maximum
   fixé par choix produit).
