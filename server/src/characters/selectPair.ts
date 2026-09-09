@@ -25,9 +25,17 @@ export function selectCharacterPair(
   characters: Character[],
   themes: string[],
   requestedLevel: SimilarityLevel,
-  random: () => number = Math.random
+  random: () => number = Math.random,
+  animeSeries: string[] = []
 ): SelectPairResult {
-  const pool = characters.filter((c) => themes.includes(c.theme));
+  const pool = characters.filter((c) => {
+    if (!themes.includes(c.theme)) return false;
+    // An empty/omitted animeSeries means "no filter" -- every anime character stays eligible.
+    if (c.theme === 'anime' && animeSeries.length > 0) {
+      return c.series !== undefined && animeSeries.includes(c.series);
+    }
+    return true;
+  });
   if (pool.length < 2) {
     throw new Error('Not enough characters in the selected themes to form a pair');
   }

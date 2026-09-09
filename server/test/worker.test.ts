@@ -37,6 +37,23 @@ describe('room creation and websocket routing', () => {
     expect(res.headers.get('Access-Control-Allow-Methods')).toContain('POST');
   });
 
+  it('GET /api/themes returns the theme catalog with anime broken down by series', async () => {
+    const res = await SELF.fetch('https://example.com/api/themes');
+    expect(res.status).toBe(200);
+    expect(res.headers.get('Access-Control-Allow-Origin')).toBe('*');
+    const body = await res.json<{ themes: { id: string; label: string; count: number; series?: unknown[] }[] }>();
+
+    const anime = body.themes.find((t) => t.id === 'anime')!;
+    expect(anime).toBeDefined();
+    expect(anime.count).toBeGreaterThan(0);
+    expect(Array.isArray(anime.series)).toBe(true);
+    expect(anime.series!.length).toBeGreaterThan(0);
+
+    const films = body.themes.find((t) => t.id === 'films')!;
+    expect(films).toBeDefined();
+    expect(films.series).toBeUndefined();
+  });
+
   it('GET /ws without a code returns 400', async () => {
     const res = await SELF.fetch('https://example.com/ws');
     expect(res.status).toBe(400);

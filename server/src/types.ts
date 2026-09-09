@@ -8,6 +8,8 @@ export interface RoomSettings {
   themes: string[];
   similarityLevel: SimilarityLevel;
   mrWhiteEnabled: boolean;
+  /** Which anime series to draw characters from when 'anime' is in themes. Empty/omitted = all. */
+  animeSeries?: string[];
 }
 
 export interface Player {

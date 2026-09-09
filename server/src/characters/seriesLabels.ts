@@ -1,0 +1,23 @@
+/** Human-readable display names for the `series` slugs used by anime characters in data.ts. */
+export const SERIES_LABELS: Record<string, string> = {
+  'one-piece': 'One Piece',
+  naruto: 'Naruto',
+  'dragon-ball': 'Dragon Ball',
+  'death-note': 'Death Note',
+  'attack-on-titan': "L'Attaque des Titans",
+  'fullmetal-alchemist': 'Fullmetal Alchemist',
+  'my-hero-academia': 'My Hero Academia',
+  'demon-slayer': 'Demon Slayer',
+  'jujutsu-kaisen': 'Jujutsu Kaisen',
+  bleach: 'Bleach',
+  'hunter-x-hunter': 'Hunter x Hunter',
+  'one-punch-man': 'One Punch Man',
+  'sword-art-online': 'Sword Art Online',
+  'tokyo-ghoul': 'Tokyo Ghoul',
+  'cowboy-bebop': 'Cowboy Bebop',
+  evangelion: 'Neon Genesis Evangelion',
+  pokemon: 'Pokémon',
+  'spy-x-family': 'Spy x Family',
+  'chainsaw-man': 'Chainsaw Man',
+  'code-geass': 'Code Geass',
+};

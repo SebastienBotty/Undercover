@@ -39,3 +39,39 @@ describe('selectCharacterPair', () => {
     expect(low.civilCharacter.id).not.toBe(high.civilCharacter.id);
   });
 });
+
+describe('selectCharacterPair with animeSeries filtering', () => {
+  const animePool: Character[] = [
+    { id: 'zoro', name: 'Zoro', theme: 'anime', series: 'one-piece', tags: ['x', 'y', 'z'] },
+    { id: 'luffy', name: 'Luffy', theme: 'anime', series: 'one-piece', tags: ['x', 'y', 'w'] },
+    { id: 'naruto', name: 'Naruto', theme: 'anime', series: 'naruto', tags: ['p', 'q', 'r'] },
+    { id: 'sasuke', name: 'Sasuke', theme: 'anime', series: 'naruto', tags: ['p', 'q', 's'] },
+  ];
+
+  it('only picks from the selected series when animeSeries is non-empty', () => {
+    // naruto/sasuke share tags 'p' and 'q' (2 shared -> 'close'), so request that level.
+    const result = selectCharacterPair(animePool, ['anime'], 'close', () => 0, ['naruto']);
+    const ids = [result.civilCharacter.id, result.undercoverCharacter.id];
+    expect(ids.every((id) => ['naruto', 'sasuke'].includes(id))).toBe(true);
+  });
+
+  it('considers every anime character when animeSeries is empty (no filter)', () => {
+    // With very_close requested and no shared tags across series, only same-series pairs match at
+    // that level -- an empty animeSeries must still be able to reach across both series' pools.
+    expect(() => selectCharacterPair(animePool, ['anime'], 'none', () => 0, [])).not.toThrow();
+  });
+
+  it('throws when the selected series has fewer than 2 matching characters', () => {
+    expect(() => selectCharacterPair(animePool, ['anime'], 'none', () => 0, ['death-note'])).toThrow();
+  });
+
+  it('does not apply the animeSeries filter to non-anime themes', () => {
+    const mixedPool: Character[] = [
+      ...animePool,
+      { id: 'gandalf', name: 'Gandalf', theme: 'films', tags: ['x', 'y', 'z'] },
+      { id: 'dumbledore', name: 'Dumbledore', theme: 'films', tags: ['x', 'y', 'w'] }, // 2 shared -> 'close'
+    ];
+    const result = selectCharacterPair(mixedPool, ['films'], 'close', () => 0, ['one-piece']);
+    expect([result.civilCharacter.theme, result.undercoverCharacter.theme]).toEqual(['films', 'films']);
+  });
+});

@@ -130,7 +130,13 @@ export class GameRoom extends DurableObject {
       // Both can throw for invalid combinations (e.g. too few characters in the selected
       // themes, or a player/role-count combo that can't guarantee a civilian majority) — catch
       // here so the host gets a typed error instead of an uncaught exception and a half-started room.
-      selection = selectCharacterPair(CHARACTERS, settings.themes, settings.similarityLevel);
+      selection = selectCharacterPair(
+        CHARACTERS,
+        settings.themes,
+        settings.similarityLevel,
+        Math.random,
+        settings.animeSeries ?? []
+      );
       roles = assignRoles(playerIds, settings);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Impossible de démarrer la partie';
