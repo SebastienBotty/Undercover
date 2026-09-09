@@ -35,7 +35,12 @@ export function RoleRevealScreen({ role, character }: RoleRevealScreenProps) {
   return (
     <div>
       <span className="eyebrow">Dossier confidentiel</span>
-      <h2>Tu es {ROLE_LABEL[role]}</h2>
+      <h2>
+        Tu es{' '}
+        <span className={role === 'undercover' ? styles.roleUndercover : undefined}>
+          {ROLE_LABEL[role]}
+        </span>
+      </h2>
       <div className={styles.dossier}>
         <div className={styles.censorBar} />
         <p className={styles.identity}>{character}</p>

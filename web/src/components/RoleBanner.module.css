@@ -1,0 +1,25 @@
+.banner {
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.9rem;
+  background: var(--panel-alt);
+}
+
+.role {
+  font-family: var(--font-display);
+  color: var(--accent-strong);
+  letter-spacing: 0.02em;
+}
+
+.undercover {
+  font-family: var(--font-display);
+  color: var(--danger-strong);
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-shadow: 0 0 10px rgba(201, 74, 64, 0.4);
+}
+
+.word {
+  color: var(--text);
+}

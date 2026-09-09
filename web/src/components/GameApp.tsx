@@ -8,7 +8,10 @@ import { ClueRoundScreen } from '@/components/ClueRoundScreen';
 import { VoteScreen } from '@/components/VoteScreen';
 import { EliminationScreen } from '@/components/EliminationScreen';
 import { EndScreen } from '@/components/EndScreen';
+import { RoleBanner } from '@/components/RoleBanner';
 import { getStoredHostSettings, storeHostSettings, type RoomSettings } from '@/lib/hostSettings';
+
+const PHASES_WITH_ROLE_BANNER = ['CLUE_ROUND', 'VOTE', 'ELIMINATION'];
 
 interface GameAppProps {
   roomCode: string;
@@ -66,6 +69,8 @@ export function GameApp({ roomCode, pseudo, isHost, onLeaveRoom }: GameAppProps)
     send({ type: 'START_GAME', settings });
   }
 
+  const me = roomState ? roomState.players.find((p: any) => p.id === getOrCreateClientId()) ?? null : null;
+
   function renderPhase() {
     if (!roomState) return <p className="muted">En attente des données de la salle...</p>;
     if (roomState.phase === 'LOBBY') {
@@ -81,7 +86,6 @@ export function GameApp({ roomCode, pseudo, isHost, onLeaveRoom }: GameAppProps)
       );
     }
     if (roomState.phase === 'ROLE_REVEAL') {
-      const me = roomState.players.find((p: any) => p.id === getOrCreateClientId());
       return <RoleRevealScreen role={me?.role ?? null} character={me?.character ?? null} />;
     }
     if (roomState.phase === 'CLUE_ROUND') {
@@ -129,6 +133,9 @@ export function GameApp({ roomCode, pseudo, isHost, onLeaveRoom }: GameAppProps)
           <p role="alert" className="alert">
             {errorMessage}
           </p>
+        )}
+        {roomState && PHASES_WITH_ROLE_BANNER.includes(roomState.phase) && (
+          <RoleBanner role={me?.role ?? null} character={me?.character ?? null} />
         )}
         {renderPhase()}
       </div>

@@ -46,6 +46,15 @@
   margin-top: 0.6rem;
 }
 
+.roleUndercover {
+  color: var(--danger-strong);
+  font-weight: 700;
+  font-size: 1.15em;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  text-shadow: 0 0 14px rgba(201, 74, 64, 0.45);
+}
+
 @media (prefers-reduced-motion: no-preference) {
   .dossier {
     animation: reveal 0.4s ease-out;

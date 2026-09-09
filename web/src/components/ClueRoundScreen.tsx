@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import styles from './ClueRoundScreen.module.css';
 
 interface Player {
   id: string;
@@ -33,17 +34,23 @@ export function ClueRoundScreen({ players, turnOrder, currentTurnIndex, clues, r
     <div>
       <span className="eyebrow">Manche {round}</span>
       <h2>Indices</h2>
-      <ul className="roster">
-        {roundClues.map((c) => {
-          const player = players.find((p) => p.id === c.playerId);
-          return (
-            <li key={c.playerId} className="rosterItem">
-              <span>{player?.name}</span>
-              <span className="muted">{c.text || '(pas de réponse)'}</span>
-            </li>
-          );
-        })}
-      </ul>
+      <table className={styles.table}>
+        <tbody>
+          {turnOrder.map((playerId) => {
+            const player = players.find((p) => p.id === playerId);
+            if (!player) return null;
+            const clue = roundClues.find((c) => c.playerId === playerId);
+            const isTurn = playerId === currentPlayerId;
+            return (
+              <tr key={playerId} className={isTurn ? styles.rowActive : undefined}>
+                <td className={styles.flagCell}>{isTurn && <span aria-label="C'est son tour">🚩</span>}</td>
+                <td className={styles.nameCell}>{player.name}</td>
+                <td className={styles.clueCell}>{clue ? clue.text || '(pas de réponse)' : '…'}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
 
       {isMyTurn ? (
         <form
