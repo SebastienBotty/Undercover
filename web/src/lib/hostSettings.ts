@@ -4,11 +4,18 @@ export interface RoomSettings {
   themes: string[];
   similarityLevel: SimilarityLevel;
   mrWhiteEnabled: boolean;
+  /** Which anime series to draw characters from when 'anime' is in themes. Empty = all. */
+  animeSeries: string[];
 }
 
 const STORAGE_KEY = 'undercover:hostSettings';
 
-const DEFAULT_SETTINGS: RoomSettings = { themes: [], similarityLevel: 'close', mrWhiteEnabled: false };
+const DEFAULT_SETTINGS: RoomSettings = {
+  themes: [],
+  similarityLevel: 'close',
+  mrWhiteEnabled: false,
+  animeSeries: [],
+};
 
 export function getStoredHostSettings(): RoomSettings {
   if (typeof window === 'undefined') return DEFAULT_SETTINGS;

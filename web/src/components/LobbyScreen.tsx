@@ -1,7 +1,7 @@
 'use client';
 import type { RoomSettings, SimilarityLevel } from '@/lib/hostSettings';
-
-const AVAILABLE_THEMES = ['anime', 'films', 'histoire'];
+import { useThemeCatalog } from '@/lib/useThemeCatalog';
+import styles from './LobbyScreen.module.css';
 
 interface Player {
   id: string;
@@ -20,11 +20,23 @@ interface LobbyScreenProps {
 }
 
 export function LobbyScreen({ isHost, code, players, settings, onStart, onSettingsChange }: LobbyScreenProps) {
+  const { themes, error: catalogError } = useThemeCatalog();
+
   function toggleTheme(theme: string) {
-    const themes = settings.themes.includes(theme)
+    const nextThemes = settings.themes.includes(theme)
       ? settings.themes.filter((t) => t !== theme)
       : [...settings.themes, theme];
-    onSettingsChange({ ...settings, themes });
+    onSettingsChange({ ...settings, themes: nextThemes });
+  }
+
+  function toggleAnimeSeries(seriesId: string, allSeriesIds: string[]) {
+    // An empty animeSeries means "no filter, every series included" -- the first toggle turns
+    // that implicit "all" into an explicit list, which then behaves as a normal toggle set.
+    const currentlySelected = settings.animeSeries.length === 0 ? allSeriesIds : settings.animeSeries;
+    const nextSelected = currentlySelected.includes(seriesId)
+      ? currentlySelected.filter((id) => id !== seriesId)
+      : [...currentlySelected, seriesId];
+    onSettingsChange({ ...settings, animeSeries: nextSelected });
   }
 
   return (
@@ -45,18 +57,53 @@ export function LobbyScreen({ isHost, code, players, settings, onStart, onSettin
         <div className="field">
           <hr className="divider" />
           <h3>Réglages</h3>
-          <fieldset className="field">
+
+          <fieldset className={styles.themesFieldset}>
             <legend className="muted">Thèmes</legend>
-            {AVAILABLE_THEMES.map((theme) => (
-              <label key={theme} htmlFor={`theme-${theme}`} className="checkboxRow">
-                <input
-                  id={`theme-${theme}`}
-                  type="checkbox"
-                  checked={settings.themes.includes(theme)}
-                  onChange={() => toggleTheme(theme)}
-                />
-                {theme}
-              </label>
+
+            {!themes && !catalogError && <p className="muted">Chargement des thèmes...</p>}
+            {catalogError && (
+              <p role="alert" className="alert">
+                {catalogError}
+              </p>
+            )}
+
+            {themes?.map((theme) => (
+              <div key={theme.id} className={styles.themeCard}>
+                <label htmlFor={`theme-${theme.id}`} className={styles.themeRow}>
+                  <input
+                    id={`theme-${theme.id}`}
+                    type="checkbox"
+                    checked={settings.themes.includes(theme.id)}
+                    onChange={() => toggleTheme(theme.id)}
+                  />
+                  <span className={styles.themeLabel}>{theme.label}</span>
+                  <span className={styles.themeCount}>({theme.count})</span>
+                </label>
+
+                {theme.series && theme.series.length > 0 && (
+                  <details className={styles.seriesDetails}>
+                    <summary className={styles.seriesSummary}>Choisir les {theme.label.toLowerCase()}s</summary>
+                    <div className={styles.seriesList}>
+                      {theme.series.map((series) => {
+                        const isChecked = settings.animeSeries.length === 0 || settings.animeSeries.includes(series.id);
+                        return (
+                          <label key={series.id} htmlFor={`series-${series.id}`} className={styles.seriesRow}>
+                            <input
+                              id={`series-${series.id}`}
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={() => toggleAnimeSeries(series.id, theme.series!.map((s) => s.id))}
+                            />
+                            <span>{series.label}</span>
+                            <span className={styles.themeCount}>({series.count})</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </details>
+                )}
+              </div>
             ))}
           </fieldset>
 

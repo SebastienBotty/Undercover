@@ -1,0 +1,81 @@
+.themesFieldset {
+  border: none;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.themeCard {
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  background: var(--panel-alt);
+  overflow: hidden;
+}
+
+.themeRow {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 0.75rem;
+  cursor: pointer;
+}
+
+.themeRow input {
+  accent-color: var(--accent);
+  width: 1.05rem;
+  height: 1.05rem;
+}
+
+.themeLabel {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.themeCount {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.seriesDetails {
+  border-top: 1px solid var(--panel-border);
+}
+
+.seriesSummary {
+  padding: 0.45rem 0.75rem 0.45rem 2rem;
+  font-size: 0.85rem;
+  color: var(--accent);
+  cursor: pointer;
+  list-style: none;
+}
+
+.seriesSummary::-webkit-details-marker {
+  display: none;
+}
+
+.seriesSummary:hover {
+  color: var(--accent-strong);
+}
+
+.seriesList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0 0.75rem 0.6rem 2rem;
+  max-height: 12rem;
+  overflow-y: auto;
+}
+
+.seriesRow {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.2rem 0;
+  font-size: 0.9rem;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.seriesRow input {
+  accent-color: var(--accent);
+}
