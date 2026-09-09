@@ -12,13 +12,14 @@ interface Player {
 
 interface LobbyScreenProps {
   isHost: boolean;
+  code: string;
   players: Player[];
   settings: RoomSettings;
   onStart: () => void;
   onSettingsChange: (settings: RoomSettings) => void;
 }
 
-export function LobbyScreen({ isHost, players, settings, onStart, onSettingsChange }: LobbyScreenProps) {
+export function LobbyScreen({ isHost, code, players, settings, onStart, onSettingsChange }: LobbyScreenProps) {
   function toggleTheme(theme: string) {
     const themes = settings.themes.includes(theme)
       ? settings.themes.filter((t) => t !== theme)
@@ -28,7 +29,8 @@ export function LobbyScreen({ isHost, players, settings, onStart, onSettingsChan
 
   return (
     <div>
-      <h2>Lobby</h2>
+      <h2>Salle {code}</h2>
+      <h3>Lobby</h3>
       <ul>
         {players.map((p) => (
           <li key={p.id}>{p.name}{!p.connected ? ' (déconnecté)' : ''}</li>

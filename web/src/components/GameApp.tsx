@@ -65,6 +65,7 @@ export function GameApp({ roomCode, pseudo, isHost, onLeaveRoom }: GameAppProps)
       return (
         <LobbyScreen
           isHost={roomState.hostId === getOrCreateClientId()}
+          code={roomState.code ?? roomCode}
           players={roomState.players}
           settings={settings}
           onStart={handleStart}

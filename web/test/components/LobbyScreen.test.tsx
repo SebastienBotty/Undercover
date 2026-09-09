@@ -12,6 +12,7 @@ describe('LobbyScreen', () => {
     render(
       <LobbyScreen
         isHost={false}
+        code="ABCDE"
         players={players}
         settings={{ themes: [], similarityLevel: 'close', mrWhiteEnabled: false }}
         onStart={() => {}}
@@ -22,10 +23,25 @@ describe('LobbyScreen', () => {
     expect(screen.getByText('Bob')).toBeInTheDocument();
   });
 
+  it('prominently displays the room code so the host can share it', () => {
+    render(
+      <LobbyScreen
+        isHost={true}
+        code="ABCDE"
+        players={players}
+        settings={{ themes: [], similarityLevel: 'close', mrWhiteEnabled: false }}
+        onStart={() => {}}
+        onSettingsChange={() => {}}
+      />
+    );
+    expect(screen.getByText(/abcde/i)).toBeInTheDocument();
+  });
+
   it('hides the settings form and start button for non-hosts', () => {
     render(
       <LobbyScreen
         isHost={false}
+        code="ABCDE"
         players={players}
         settings={{ themes: [], similarityLevel: 'close', mrWhiteEnabled: false }}
         onStart={() => {}}
@@ -40,6 +56,7 @@ describe('LobbyScreen', () => {
     render(
       <LobbyScreen
         isHost={true}
+        code="ABCDE"
         players={players}
         settings={{ themes: [], similarityLevel: 'close', mrWhiteEnabled: false }}
         onStart={() => {}}
@@ -58,6 +75,7 @@ describe('LobbyScreen', () => {
     render(
       <LobbyScreen
         isHost={true}
+        code="ABCDE"
         players={players}
         settings={{ themes: ['anime'], similarityLevel: 'close', mrWhiteEnabled: false }}
         onStart={onStart}
