@@ -55,4 +55,21 @@ describe('GameApp', () => {
     render(<GameApp roomCode="ABCDE" pseudo="Seb" isHost={false} />);
     expect(screen.getByRole('button', { name: /lancer la partie/i })).toBeInTheDocument();
   });
+
+  it('renders RoleRevealScreen with the current player private card during ROLE_REVEAL', () => {
+    window.localStorage.setItem('undercover:clientId', 'c1');
+    vi.spyOn(socketModule, 'useGameSocket').mockReturnValue(
+      mockSocket({
+        status: 'open',
+        lastMessage: {
+          type: 'ROOM_STATE',
+          phase: 'ROLE_REVEAL',
+          hostId: 'c1',
+          players: [{ id: 'c1', name: 'Seb', alive: true, connected: true, role: 'civil', character: 'Goku' }],
+        },
+      })
+    );
+    render(<GameApp roomCode="ABCDE" pseudo="Seb" isHost={false} />);
+    expect(screen.getByText('Goku')).toBeInTheDocument();
+  });
 });

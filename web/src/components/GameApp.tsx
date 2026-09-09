@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useGameSocket } from '@/lib/useGameSocket';
 import { getOrCreateClientId } from '@/lib/clientId';
 import { LobbyScreen } from '@/components/LobbyScreen';
+import { RoleRevealScreen } from '@/components/RoleRevealScreen';
 import { getStoredHostSettings, storeHostSettings, type RoomSettings } from '@/lib/hostSettings';
 
 interface GameAppProps {
@@ -65,6 +66,10 @@ export function GameApp({ roomCode, pseudo, isHost }: GameAppProps) {
           onSettingsChange={handleSettingsChange}
         />
       );
+    }
+    if (roomState.phase === 'ROLE_REVEAL') {
+      const me = roomState.players.find((p: any) => p.id === getOrCreateClientId());
+      return <RoleRevealScreen role={me?.role ?? null} character={me?.character ?? null} />;
     }
     return <p>Connecté ({roomState.phase})</p>; // fallback for phases not wired up yet
   }
