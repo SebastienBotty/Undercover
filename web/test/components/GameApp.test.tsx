@@ -149,7 +149,7 @@ describe('GameApp', () => {
     expect(send).toHaveBeenCalledWith({ type: 'MR_WHITE_GUESS', guess: 'Goku' });
   });
 
-  it('renders EndScreen and calls onLeaveRoom when replay is clicked', () => {
+  it('renders EndScreen and calls onLeaveRoom when quit is clicked', () => {
     const onLeaveRoom = vi.fn();
     vi.spyOn(socketModule, 'useGameSocket').mockReturnValue(
       mockSocket({
@@ -163,7 +163,7 @@ describe('GameApp', () => {
       })
     );
     render(<GameApp roomCode="ABCDE" pseudo="Seb" isHost={false} onLeaveRoom={onLeaveRoom} />);
-    fireEvent.click(screen.getByRole('button', { name: /rejouer/i }));
+    fireEvent.click(screen.getByRole('button', { name: /quitter/i }));
     expect(onLeaveRoom).toHaveBeenCalled();
   });
 });

@@ -32,7 +32,7 @@ export function EndScreen({ winner, players, onReplay }: EndScreenProps) {
           </li>
         ))}
       </ul>
-      <button onClick={onReplay}>Rejouer</button>
+      <button onClick={onReplay}>Quitter</button>
     </div>
   );
 }

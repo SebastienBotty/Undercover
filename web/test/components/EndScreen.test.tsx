@@ -21,10 +21,10 @@ describe('EndScreen', () => {
     expect(screen.getByText(/vegeta/i)).toBeInTheDocument();
   });
 
-  it('calls onReplay when the replay button is clicked', () => {
+  it('calls onReplay when the quit button is clicked', () => {
     const onReplay = vi.fn();
     render(<EndScreen winner="civil" players={players} onReplay={onReplay} />);
-    fireEvent.click(screen.getByRole('button', { name: /rejouer/i }));
+    fireEvent.click(screen.getByRole('button', { name: /quitter/i }));
     expect(onReplay).toHaveBeenCalled();
   });
 });
