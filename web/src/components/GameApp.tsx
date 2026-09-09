@@ -124,7 +124,15 @@ export function GameApp({ roomCode, pseudo, isHost, onLeaveRoom }: GameAppProps)
       );
     }
     if (roomState.phase === 'END') {
-      return <EndScreen winner={roomState.winner} players={roomState.players} onReplay={onLeaveRoom} />;
+      return (
+        <EndScreen
+          winner={roomState.winner}
+          players={roomState.players}
+          isHost={roomState.hostId === getOrCreateClientId()}
+          onRestart={() => send({ type: 'RESTART_GAME' })}
+          onLeave={onLeaveRoom}
+        />
+      );
     }
     return <p className="muted">Connecté ({roomState.phase})</p>; // fallback for phases not wired up yet
   }

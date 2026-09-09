@@ -169,4 +169,25 @@ describe('GameApp', () => {
     fireEvent.click(screen.getByRole('button', { name: /quitter/i }));
     expect(onLeaveRoom).toHaveBeenCalled();
   });
+
+  it('sends RESTART_GAME when the host clicks Rejouer on the end screen', () => {
+    window.localStorage.setItem('undercover:clientId', 'p1');
+    const send = vi.fn();
+    vi.spyOn(socketModule, 'useGameSocket').mockReturnValue(
+      mockSocket({
+        status: 'open',
+        send,
+        lastMessage: {
+          type: 'ROOM_STATE',
+          phase: 'END',
+          hostId: 'p1',
+          winner: 'civil',
+          players: [{ id: 'p1', name: 'Alice', role: 'civil', character: 'Goku' }],
+        },
+      })
+    );
+    render(<GameApp roomCode="ABCDE" pseudo="Alice" isHost={false} onLeaveRoom={() => {}} />);
+    fireEvent.click(screen.getByRole('button', { name: /rejouer/i }));
+    expect(send).toHaveBeenCalledWith({ type: 'RESTART_GAME' });
+  });
 });

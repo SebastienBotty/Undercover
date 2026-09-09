@@ -70,6 +70,9 @@ export class GameRoom extends DurableObject {
       case 'MR_WHITE_GUESS':
         await this.handleMrWhiteGuess(attachment.playerId, msg.guess);
         break;
+      case 'RESTART_GAME':
+        await this.handleRestartGame(attachment.playerId);
+        break;
       default:
         this.sendError(ws, 'UNKNOWN_MESSAGE', 'Unsupported message type at this stage');
     }
@@ -281,6 +284,35 @@ export class GameRoom extends DurableObject {
     } else {
       await this.resolveAfterElimination(room);
     }
+
+    await this.saveRoom();
+    this.broadcast();
+  }
+
+  private async handleRestartGame(playerId: string) {
+    const room = this.room!;
+    if (playerId !== room.hostId) {
+      this.sendErrorTo(playerId, 'NOT_HOST', "Seul l'hôte peut relancer une partie");
+      return;
+    }
+    if (room.phase !== 'END') {
+      this.sendErrorTo(playerId, 'WRONG_PHASE', "Ce n'est pas le moment de relancer une partie");
+      return;
+    }
+
+    for (const player of room.players) {
+      player.role = null;
+      player.character = null;
+      player.alive = true;
+    }
+    room.phase = 'LOBBY';
+    room.turnOrder = [];
+    room.currentTurnIndex = 0;
+    room.clues = [];
+    room.votes = {};
+    room.round = 0;
+    room.winner = null;
+    room.lastEliminatedId = null;
 
     await this.saveRoom();
     this.broadcast();

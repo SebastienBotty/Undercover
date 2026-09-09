@@ -464,4 +464,84 @@ describe('GameRoom game flow', () => {
     // Turn must have advanced past the timed-out player, to the third player in turn order.
     expect(timeoutSnap.turnOrder[timeoutSnap.currentTurnIndex]).toBe(turnOrder[2]);
   });
+
+  it('lets the host restart a finished game back into the lobby, but rejects non-hosts', async () => {
+    const code = 'FLOW-RESTART';
+    const id = env.GAME_ROOM.idFromName(code);
+    const stub = env.GAME_ROOM.get(id);
+
+    const wsA = await joinPlayer(stub, code, 'Alice', 'a', true);
+    const wsB = await joinPlayer(stub, code, 'Bob', 'b', false, [wsA]);
+    const wsC = await joinPlayer(stub, code, 'Carl', 'c', false, [wsA, wsB]);
+    const sockets: Record<string, WebSocket> = { a: wsA, b: wsB, c: wsC };
+
+    const started = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+    wsA.send(
+      JSON.stringify({
+        type: 'START_GAME',
+        settings: { themes: ['anime'], similarityLevel: 'none', mrWhiteEnabled: false },
+      })
+    );
+    await started;
+
+    const afterAlarmA = waitForMessage(wsA);
+    await runDurableObjectAlarm(stub);
+    const clueRoundSnap = await afterAlarmA;
+    const turnOrder = clueRoundSnap.turnOrder as string[];
+
+    await submitFullClueRound(sockets, turnOrder, 1);
+    await submitFullClueRound(sockets, turnOrder, 2);
+
+    // Any single elimination in a 3-player, no-Mr.-White game ends it (civil win or undercover
+    // parity win) -- vote for the second player in turn order to reach END deterministically.
+    const target = turnOrder[1];
+    let lastSnap: any;
+    for (const playerId of turnOrder) {
+      const ws = sockets[playerId];
+      const next = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+      ws.send(JSON.stringify({ type: 'SUBMIT_VOTE', targetId: target }));
+      const results = await next;
+      lastSnap = results[0];
+    }
+    expect(lastSnap.phase).toBe('ELIMINATION');
+
+    const afterReveal = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+    await runDurableObjectAlarm(stub);
+    const endSnaps = await afterReveal;
+    expect(endSnaps[0].phase).toBe('END');
+
+    // A non-host cannot restart the game.
+    const deniedPromise = waitForMessage(wsB);
+    wsB.send(JSON.stringify({ type: 'RESTART_GAME' }));
+    const denied = await deniedPromise;
+    expect(denied).toMatchObject({ type: 'ERROR', code: 'NOT_HOST' });
+
+    // The host restarts: the room returns to LOBBY with every player's role/character/alive
+    // reset, same players and same host as before.
+    const restartResult = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+    wsA.send(JSON.stringify({ type: 'RESTART_GAME' }));
+    const restartSnaps = await restartResult;
+    const restartSnap = restartSnaps[0];
+
+    expect(restartSnap.phase).toBe('LOBBY');
+    expect(restartSnap.hostId).toBe('a');
+    expect(restartSnap.players).toHaveLength(3);
+    expect(restartSnap.players.every((p: any) => p.alive === true)).toBe(true);
+    expect(restartSnap.players.every((p: any) => p.role === null && p.character === null)).toBe(true);
+  });
+
+  it('rejects RESTART_GAME outside the END phase', async () => {
+    const code = 'FLOW-RESTART-WRONG-PHASE';
+    const id = env.GAME_ROOM.idFromName(code);
+    const stub = env.GAME_ROOM.get(id);
+
+    const wsA = await joinPlayer(stub, code, 'Alice', 'a', true);
+    await joinPlayer(stub, code, 'Bob', 'b', false, [wsA]);
+
+    // Still in LOBBY (game never started) -- the host cannot restart what hasn't ended.
+    const errorPromise = waitForMessage(wsA);
+    wsA.send(JSON.stringify({ type: 'RESTART_GAME' }));
+    const error = await errorPromise;
+    expect(error).toMatchObject({ type: 'ERROR', code: 'WRONG_PHASE' });
+  });
 });

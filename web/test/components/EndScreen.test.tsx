@@ -9,22 +9,35 @@ const players = [
 
 describe('EndScreen', () => {
   it('announces the winning side', () => {
-    render(<EndScreen winner="civil" players={players} onReplay={() => {}} />);
+    render(<EndScreen winner="civil" players={players} isHost={false} onRestart={() => {}} onLeave={() => {}} />);
     expect(screen.getByText(/civils/i)).toBeInTheDocument();
   });
 
   it('lists every player with their revealed role and character', () => {
-    render(<EndScreen winner="civil" players={players} onReplay={() => {}} />);
+    render(<EndScreen winner="civil" players={players} isHost={false} onRestart={() => {}} onLeave={() => {}} />);
     expect(screen.getByText(/alice/i)).toBeInTheDocument();
     expect(screen.getByText(/goku/i)).toBeInTheDocument();
     expect(screen.getByText(/bob/i)).toBeInTheDocument();
     expect(screen.getByText(/vegeta/i)).toBeInTheDocument();
   });
 
-  it('calls onReplay when the quit button is clicked', () => {
-    const onReplay = vi.fn();
-    render(<EndScreen winner="civil" players={players} onReplay={onReplay} />);
+  it('calls onLeave when the quit button is clicked', () => {
+    const onLeave = vi.fn();
+    render(<EndScreen winner="civil" players={players} isHost={false} onRestart={() => {}} onLeave={onLeave} />);
     fireEvent.click(screen.getByRole('button', { name: /quitter/i }));
-    expect(onReplay).toHaveBeenCalled();
+    expect(onLeave).toHaveBeenCalled();
+  });
+
+  it('shows a Rejouer button to the host and calls onRestart when clicked', () => {
+    const onRestart = vi.fn();
+    render(<EndScreen winner="civil" players={players} isHost={true} onRestart={onRestart} onLeave={() => {}} />);
+    fireEvent.click(screen.getByRole('button', { name: /rejouer/i }));
+    expect(onRestart).toHaveBeenCalled();
+  });
+
+  it('shows a waiting message instead of Rejouer for non-hosts', () => {
+    render(<EndScreen winner="civil" players={players} isHost={false} onRestart={() => {}} onLeave={() => {}} />);
+    expect(screen.queryByRole('button', { name: /rejouer/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/en attente que l'hôte relance/i)).toBeInTheDocument();
   });
 });

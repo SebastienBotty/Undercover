@@ -12,7 +12,9 @@ interface Player {
 interface EndScreenProps {
   winner: Role | null;
   players: Player[];
-  onReplay: () => void;
+  isHost: boolean;
+  onRestart: () => void;
+  onLeave: () => void;
 }
 
 const WINNER_LABEL: Record<Role, string> = {
@@ -21,7 +23,7 @@ const WINNER_LABEL: Record<Role, string> = {
   mrwhite: 'Mr. White gagne !',
 };
 
-export function EndScreen({ winner, players, onReplay }: EndScreenProps) {
+export function EndScreen({ winner, players, isHost, onRestart, onLeave }: EndScreenProps) {
   return (
     <div>
       <span className="eyebrow">Affaire classée</span>
@@ -36,7 +38,15 @@ export function EndScreen({ winner, players, onReplay }: EndScreenProps) {
           </li>
         ))}
       </ul>
-      <button onClick={onReplay} className="btn btnGhost btnBlock">
+
+      {isHost ? (
+        <button onClick={onRestart} className="btn btnBlock">
+          Rejouer
+        </button>
+      ) : (
+        <p className="muted">En attente que l'hôte relance une partie...</p>
+      )}
+      <button onClick={onLeave} className="btn btnGhost btnBlock">
         Quitter
       </button>
     </div>

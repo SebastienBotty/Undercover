@@ -5,7 +5,8 @@ export type ClientMessage =
   | { type: 'START_GAME'; settings: RoomSettings }
   | { type: 'SUBMIT_CLUE'; text: string }
   | { type: 'SUBMIT_VOTE'; targetId: string }
-  | { type: 'MR_WHITE_GUESS'; guess: string };
+  | { type: 'MR_WHITE_GUESS'; guess: string }
+  | { type: 'RESTART_GAME' };
 
 export interface ErrorMessage {
   type: 'ERROR';
