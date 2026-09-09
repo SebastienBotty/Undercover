@@ -152,11 +152,51 @@ describe('GameRoom join lifecycle', () => {
     expect(errorMsg).toMatchObject({ type: 'ERROR', code: 'ROOM_FULL' });
   });
 
-  // Deferred to Task 8's test suite: rejecting a new-player JOIN_ROOM once the room
-  // has left LOBBY (GAME_STARTED) can't be exercised yet. GameRoom currently has no
-  // way to transition `phase` away from 'LOBBY' — that requires Task 8's START_GAME
-  // message handler. The GAME_STARTED branch in handleJoin is implemented (see
-  // `if (this.room.phase !== 'LOBBY')` in GameRoom.ts) but is only reachable by
-  // driving the room through START_GAME, which does not exist in this file yet.
-  it.todo('rejects a new player joining after the game has started (needs Task 8 START_GAME handler)');
+  it('rejects a new player joining after the game has started', async () => {
+    const id = env.GAME_ROOM.idFromName('TEST-JOIN-GAME-STARTED');
+    const stub = env.GAME_ROOM.get(id);
+
+    const resA = await connect(stub);
+    const wsA = resA.webSocket!;
+    wsA.accept();
+    const joinedA = waitForMessage(wsA);
+    wsA.send(JSON.stringify({ type: 'JOIN_ROOM', code: 'TEST-JOIN-GAME-STARTED', name: 'Alice', clientId: 'a', isHost: true }));
+    await joinedA;
+
+    const resB = await connect(stub);
+    const wsB = resB.webSocket!;
+    wsB.accept();
+    const joinedB = waitForMessage(wsB);
+    const drainA1 = waitForMessage(wsA);
+    wsB.send(JSON.stringify({ type: 'JOIN_ROOM', code: 'TEST-JOIN-GAME-STARTED', name: 'Bob', clientId: 'b', isHost: false }));
+    await Promise.all([joinedB, drainA1]);
+
+    const resC = await connect(stub);
+    const wsC = resC.webSocket!;
+    wsC.accept();
+    const joinedC = waitForMessage(wsC);
+    const drainA2 = waitForMessage(wsA);
+    const drainB1 = waitForMessage(wsB);
+    wsC.send(JSON.stringify({ type: 'JOIN_ROOM', code: 'TEST-JOIN-GAME-STARTED', name: 'Carl', clientId: 'c', isHost: false }));
+    await Promise.all([joinedC, drainA2, drainB1]);
+
+    const started = Promise.all([waitForMessage(wsA), waitForMessage(wsB), waitForMessage(wsC)]);
+    wsA.send(
+      JSON.stringify({
+        type: 'START_GAME',
+        settings: { themes: ['anime'], similarityLevel: 'none', mrWhiteEnabled: false },
+      })
+    );
+    const [snapA] = await started;
+    expect(snapA.phase).toBe('ROLE_REVEAL');
+
+    const resD = await connect(stub);
+    const wsD = resD.webSocket!;
+    wsD.accept();
+    const errorPromise = waitForMessage(wsD);
+    wsD.send(JSON.stringify({ type: 'JOIN_ROOM', code: 'TEST-JOIN-GAME-STARTED', name: 'Dora', clientId: 'd', isHost: false }));
+    const errorMsg = await errorPromise;
+
+    expect(errorMsg).toMatchObject({ type: 'ERROR', code: 'GAME_STARTED' });
+  });
 });
