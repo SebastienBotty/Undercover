@@ -48,7 +48,10 @@ describe('ClueRoundScreen', () => {
         players={players}
         turnOrder={['p1', 'p2']}
         currentTurnIndex={1}
-        clues={[{ playerId: 'p1', round: 1, text: 'fort' }]}
+        clues={[
+          { playerId: 'p1', round: 1, text: 'fort' },
+          { playerId: 'p2', round: 2, text: 'ne-devrait-pas-apparaitre' },
+        ]}
         round={1}
         selfId="p2"
         onSubmitClue={() => {}}
@@ -56,5 +59,6 @@ describe('ClueRoundScreen', () => {
     );
     expect(screen.getByText(/alice/i)).toBeInTheDocument();
     expect(screen.getByText(/fort/)).toBeInTheDocument();
+    expect(screen.queryByText(/ne-devrait-pas-apparaitre/)).not.toBeInTheDocument();
   });
 });
