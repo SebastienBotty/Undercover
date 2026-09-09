@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { env } from 'cloudflare:test';
 
 function connect(stub: DurableObjectStub) {
@@ -87,4 +87,76 @@ describe('GameRoom join lifecycle', () => {
     expect(snapshot.players).toHaveLength(1);
     expect(snapshot.players[0].connected).toBe(true);
   });
+
+  it('rejects a reconnect that renames to a name already held by a different connected player', async () => {
+    const id = env.GAME_ROOM.idFromName('TEST-JOIN-RENAME-COLLISION');
+    const stub = env.GAME_ROOM.get(id);
+
+    const resHost = await connect(stub);
+    const wsHost = resHost.webSocket!;
+    wsHost.accept();
+    const hostJoined = waitForMessage(wsHost);
+    wsHost.send(JSON.stringify({ type: 'JOIN_ROOM', code: 'TEST-JOIN-RENAME-COLLISION', name: 'Alice', clientId: 'c1', isHost: true }));
+    await hostJoined;
+
+    const resBob = await connect(stub);
+    const wsBob = resBob.webSocket!;
+    wsBob.accept();
+    const bobJoined = waitForMessage(wsBob);
+    wsBob.send(JSON.stringify({ type: 'JOIN_ROOM', code: 'TEST-JOIN-RENAME-COLLISION', name: 'Bob', clientId: 'c2', isHost: false }));
+    await bobJoined;
+
+    // c2 ("Bob") reconnects but tries to rename itself to "Alice", already held by c1.
+    const resBobReconnect = await connect(stub);
+    const wsBobReconnect = resBobReconnect.webSocket!;
+    wsBobReconnect.accept();
+    const renameAttempt = waitForMessage(wsBobReconnect);
+    wsBobReconnect.send(
+      JSON.stringify({ type: 'JOIN_ROOM', code: 'TEST-JOIN-RENAME-COLLISION', name: 'Alice', clientId: 'c2', isHost: false }),
+    );
+    const errorMsg = await renameAttempt;
+
+    expect(errorMsg).toMatchObject({ type: 'ERROR', code: 'NAME_TAKEN' });
+  });
+
+  it('rejects an 11th player when the room is full', async () => {
+    const id = env.GAME_ROOM.idFromName('TEST-JOIN-FULL');
+    const stub = env.GAME_ROOM.get(id);
+
+    for (let i = 1; i <= 10; i++) {
+      const res = await connect(stub);
+      const ws = res.webSocket!;
+      ws.accept();
+      const joined = waitForMessage(ws);
+      ws.send(
+        JSON.stringify({
+          type: 'JOIN_ROOM',
+          code: 'TEST-JOIN-FULL',
+          name: `Player${i}`,
+          clientId: `c${i}`,
+          isHost: i === 1,
+        }),
+      );
+      await joined;
+    }
+
+    const res11 = await connect(stub);
+    const ws11 = res11.webSocket!;
+    ws11.accept();
+    const eleventh = waitForMessage(ws11);
+    ws11.send(
+      JSON.stringify({ type: 'JOIN_ROOM', code: 'TEST-JOIN-FULL', name: 'Player11', clientId: 'c11', isHost: false }),
+    );
+    const errorMsg = await eleventh;
+
+    expect(errorMsg).toMatchObject({ type: 'ERROR', code: 'ROOM_FULL' });
+  });
+
+  // Deferred to Task 8's test suite: rejecting a new-player JOIN_ROOM once the room
+  // has left LOBBY (GAME_STARTED) can't be exercised yet. GameRoom currently has no
+  // way to transition `phase` away from 'LOBBY' — that requires Task 8's START_GAME
+  // message handler. The GAME_STARTED branch in handleJoin is implemented (see
+  // `if (this.room.phase !== 'LOBBY')` in GameRoom.ts) but is only reachable by
+  // driving the room through START_GAME, which does not exist in this file yet.
+  it.todo('rejects a new player joining after the game has started (needs Task 8 START_GAME handler)');
 });

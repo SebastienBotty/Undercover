@@ -84,6 +84,10 @@ export class GameRoom extends DurableObject {
 
     const existing = this.room.players.find((p) => p.id === msg.clientId);
     if (existing) {
+      if (this.room.players.some((p) => p.id !== msg.clientId && p.name === msg.name)) {
+        this.sendError(ws, 'NAME_TAKEN', 'Ce pseudo est déjà pris dans cette salle');
+        return;
+      }
       existing.connected = true;
       existing.name = msg.name;
     } else {
