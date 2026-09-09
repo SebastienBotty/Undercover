@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, act } from '@testing-library/react';
+import { render, screen, act, fireEvent } from '@testing-library/react';
 import { GameApp } from '@/components/GameApp';
 import * as socketModule from '@/lib/useGameSocket';
 
@@ -71,5 +71,33 @@ describe('GameApp', () => {
     );
     render(<GameApp roomCode="ABCDE" pseudo="Seb" isHost={false} />);
     expect(screen.getByText('Goku')).toBeInTheDocument();
+  });
+
+  it('renders ClueRoundScreen and sends SUBMIT_CLUE on submit', () => {
+    window.localStorage.setItem('undercover:clientId', 'p1');
+    const send = vi.fn();
+    vi.spyOn(socketModule, 'useGameSocket').mockReturnValue(
+      mockSocket({
+        status: 'open',
+        send,
+        lastMessage: {
+          type: 'ROOM_STATE',
+          phase: 'CLUE_ROUND',
+          hostId: 'p1',
+          turnOrder: ['p1', 'p2'],
+          currentTurnIndex: 0,
+          clues: [],
+          round: 1,
+          players: [
+            { id: 'p1', name: 'Alice', alive: true, connected: true },
+            { id: 'p2', name: 'Bob', alive: true, connected: true },
+          ],
+        },
+      })
+    );
+    render(<GameApp roomCode="ABCDE" pseudo="Alice" isHost={false} />);
+    fireEvent.change(screen.getByPlaceholderText(/ton indice/i), { target: { value: 'fort' } });
+    fireEvent.click(screen.getByRole('button', { name: /envoyer/i }));
+    expect(send).toHaveBeenCalledWith({ type: 'SUBMIT_CLUE', text: 'fort' });
   });
 });

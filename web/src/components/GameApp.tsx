@@ -4,6 +4,7 @@ import { useGameSocket } from '@/lib/useGameSocket';
 import { getOrCreateClientId } from '@/lib/clientId';
 import { LobbyScreen } from '@/components/LobbyScreen';
 import { RoleRevealScreen } from '@/components/RoleRevealScreen';
+import { ClueRoundScreen } from '@/components/ClueRoundScreen';
 import { getStoredHostSettings, storeHostSettings, type RoomSettings } from '@/lib/hostSettings';
 
 interface GameAppProps {
@@ -70,6 +71,19 @@ export function GameApp({ roomCode, pseudo, isHost }: GameAppProps) {
     if (roomState.phase === 'ROLE_REVEAL') {
       const me = roomState.players.find((p: any) => p.id === getOrCreateClientId());
       return <RoleRevealScreen role={me?.role ?? null} character={me?.character ?? null} />;
+    }
+    if (roomState.phase === 'CLUE_ROUND') {
+      return (
+        <ClueRoundScreen
+          players={roomState.players}
+          turnOrder={roomState.turnOrder}
+          currentTurnIndex={roomState.currentTurnIndex}
+          clues={roomState.clues}
+          round={roomState.round}
+          selfId={getOrCreateClientId()}
+          onSubmitClue={(text) => send({ type: 'SUBMIT_CLUE', text })}
+        />
+      );
     }
     return <p>Connecté ({roomState.phase})</p>; // fallback for phases not wired up yet
   }
