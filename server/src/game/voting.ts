@@ -31,7 +31,10 @@ export function checkWinCondition(players: { role: Role; alive: boolean }[]): Ro
   if (aliveUndercover === 0 && aliveMrWhite === 0) {
     return 'civil';
   }
-  if (aliveUndercover >= aliveCivils) {
+  if (aliveCivils === 0 && aliveUndercover === 0 && aliveMrWhite > 0) {
+    return 'mrwhite';
+  }
+  if (aliveUndercover > 0 && aliveUndercover + aliveMrWhite >= aliveCivils) {
     return 'undercover';
   }
   return null;

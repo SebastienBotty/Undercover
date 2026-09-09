@@ -40,6 +40,38 @@ describe('checkWinCondition', () => {
     ];
     expect(checkWinCondition(players)).toBe('undercover');
   });
+
+  it('returns mrwhite (not undercover) when only Mr. White survives, with no civils or undercover left', () => {
+    // Regression test for the false-positive: 0 alive civils and 0 alive undercover used to
+    // satisfy `aliveUndercover >= aliveCivils` (0 >= 0), incorrectly declaring an undercover win.
+    const players = [
+      { role: 'mrwhite' as const, alive: true },
+      { role: 'civil' as const, alive: false },
+      { role: 'undercover' as const, alive: false },
+    ];
+    expect(checkWinCondition(players)).toBe('mrwhite');
+  });
+
+  it('returns undercover via parity when undercover + mrwhite together match alive civils', () => {
+    const players = [
+      { role: 'civil' as const, alive: true },
+      { role: 'civil' as const, alive: true },
+      { role: 'undercover' as const, alive: true },
+      { role: 'mrwhite' as const, alive: true },
+    ];
+    expect(checkWinCondition(players)).toBe('undercover');
+  });
+
+  it('returns null (game continues) when only civils and an uncaught Mr. White remain and civils still outnumber', () => {
+    const players = [
+      { role: 'civil' as const, alive: true },
+      { role: 'civil' as const, alive: true },
+      { role: 'civil' as const, alive: false },
+      { role: 'mrwhite' as const, alive: true },
+      { role: 'undercover' as const, alive: false },
+    ];
+    expect(checkWinCondition(players)).toBeNull();
+  });
 });
 
 describe('checkMrWhiteGuess', () => {
