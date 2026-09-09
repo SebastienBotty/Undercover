@@ -129,4 +129,97 @@ describe('GameRoom game flow', () => {
     const error = await errorPromise;
     expect(error).toMatchObject({ type: 'ERROR', code: 'NOT_YOUR_TURN' });
   });
+
+  it('rejects START_GAME when the settings cannot guarantee a civilian majority', async () => {
+    const code = 'FLOW-3';
+    const id = env.GAME_ROOM.idFromName(code);
+    const stub = env.GAME_ROOM.get(id);
+
+    const wsA = await joinPlayer(stub, code, 'Alice', 'a', true);
+    const wsB = await joinPlayer(stub, code, 'Bob', 'b', false, [wsA]);
+    const wsC = await joinPlayer(stub, code, 'Carl', 'c', false, [wsA, wsB]);
+
+    // 3 players + mrWhiteEnabled: true => 1 undercover + 1 Mr. White + only 1 civil left,
+    // which fails assignRoles' civilian-majority guard (civilCount <= specialCount).
+    const errorPromise = waitForMessage(wsA);
+    wsA.send(
+      JSON.stringify({
+        type: 'START_GAME',
+        settings: { themes: ['anime'], similarityLevel: 'none', mrWhiteEnabled: true },
+      })
+    );
+    const error = await errorPromise;
+    expect(error).toMatchObject({ type: 'ERROR', code: 'CANNOT_START_GAME' });
+
+    // The room must not have been half-mutated by the failed attempt: a valid START_GAME
+    // right afterwards should still succeed normally.
+    const started = Promise.all([waitForMessage(wsA), waitForMessage(wsB), waitForMessage(wsC)]);
+    wsA.send(
+      JSON.stringify({
+        type: 'START_GAME',
+        settings: { themes: ['anime'], similarityLevel: 'none', mrWhiteEnabled: false },
+      })
+    );
+    const [snapA] = await started;
+    expect(snapA.phase).toBe('ROLE_REVEAL');
+  });
+
+  it('rejects SUBMIT_VOTE targeting a nonexistent player without recording the vote', async () => {
+    const code = 'FLOW-4';
+    const id = env.GAME_ROOM.idFromName(code);
+    const stub = env.GAME_ROOM.get(id);
+
+    const wsA = await joinPlayer(stub, code, 'Alice', 'a', true);
+    const wsB = await joinPlayer(stub, code, 'Bob', 'b', false, [wsA]);
+    const wsC = await joinPlayer(stub, code, 'Carl', 'c', false, [wsA, wsB]);
+
+    const started = Promise.all([waitForMessage(wsA), waitForMessage(wsB), waitForMessage(wsC)]);
+    wsA.send(
+      JSON.stringify({
+        type: 'START_GAME',
+        settings: { themes: ['anime'], similarityLevel: 'none', mrWhiteEnabled: false },
+      })
+    );
+    await started;
+
+    const id2 = env.GAME_ROOM.idFromName(code);
+    const stub2 = env.GAME_ROOM.get(id2);
+    const afterAlarmA = waitForMessage(wsA);
+    await runDurableObjectAlarm(stub2);
+    const clueRoundSnap = await afterAlarmA;
+
+    const turnOrder = clueRoundSnap.turnOrder as string[];
+    const sockets: Record<string, WebSocket> = { a: wsA, b: wsB, c: wsC };
+
+    for (const playerId of turnOrder) {
+      const ws = sockets[playerId];
+      const next = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+      ws.send(JSON.stringify({ type: 'SUBMIT_CLUE', text: `clue-from-${playerId}` }));
+      await next;
+    }
+
+    // Now in VOTE phase. First player attempts to vote for a player id that doesn't exist.
+    const firstVoterWs = sockets[turnOrder[0]];
+    const errorPromise = waitForMessage(firstVoterWs);
+    firstVoterWs.send(JSON.stringify({ type: 'SUBMIT_VOTE', targetId: 'does-not-exist' }));
+    const error = await errorPromise;
+    expect(error).toMatchObject({ type: 'ERROR', code: 'INVALID_VOTE_TARGET' });
+
+    // The bogus vote must not have been recorded: a full, valid round of voting (including a
+    // real vote from the same first player) must still resolve the round normally afterwards.
+    const target = turnOrder[1];
+    const voteResults: any[] = [];
+    for (const playerId of turnOrder) {
+      const ws = sockets[playerId];
+      const next = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+      ws.send(JSON.stringify({ type: 'SUBMIT_VOTE', targetId: target }));
+      const results = await next;
+      voteResults.push(results[0]);
+    }
+
+    const finalSnap = voteResults[voteResults.length - 1];
+    expect(['ELIMINATION', 'END', 'CLUE_ROUND']).toContain(finalSnap.phase);
+    const eliminatedPlayer = finalSnap.players.find((p: any) => p.id === target);
+    expect(eliminatedPlayer.alive).toBe(false);
+  });
 });

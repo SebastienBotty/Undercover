@@ -112,14 +112,22 @@ export class GameRoom extends DurableObject {
       return;
     }
 
-    const { civilCharacter, undercoverCharacter, levelUsed, wasRelaxed } = selectCharacterPair(
-      CHARACTERS,
-      settings.themes,
-      settings.similarityLevel
-    );
-
     const playerIds = room.players.map((p) => p.id);
-    const roles = assignRoles(playerIds, settings);
+    let selection: ReturnType<typeof selectCharacterPair>;
+    let roles: ReturnType<typeof assignRoles>;
+    try {
+      // Both can throw for invalid combinations (e.g. too few characters in the selected
+      // themes, or a player/role-count combo that can't guarantee a civilian majority) — catch
+      // here so the host gets a typed error instead of an uncaught exception and a half-started room.
+      selection = selectCharacterPair(CHARACTERS, settings.themes, settings.similarityLevel);
+      roles = assignRoles(playerIds, settings);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Impossible de démarrer la partie';
+      this.sendErrorTo(playerId, 'CANNOT_START_GAME', message);
+      return;
+    }
+    const { civilCharacter, undercoverCharacter, levelUsed, wasRelaxed } = selection;
+
     for (const player of room.players) {
       const role = roles[player.id];
       player.role = role;
@@ -190,6 +198,12 @@ export class GameRoom extends DurableObject {
     const voter = room.players.find((p) => p.id === playerId);
     if (!voter || !voter.alive) {
       this.sendErrorTo(playerId, 'NOT_ALIVE', 'Tu ne peux plus voter');
+      return;
+    }
+
+    const target = room.players.find((p) => p.id === targetId);
+    if (!target || !target.alive) {
+      this.sendErrorTo(playerId, 'INVALID_VOTE_TARGET', 'Cible de vote invalide');
       return;
     }
 
