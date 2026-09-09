@@ -6,6 +6,7 @@ describe('worker', () => {
     const res = await SELF.fetch('https://example.com/health');
     expect(res.status).toBe(200);
     expect(await res.text()).toBe('OK');
+    expect(res.headers.get('Access-Control-Allow-Origin')).toBe('*');
   });
 
   it('responds 404 for unknown routes', async () => {
@@ -20,6 +21,20 @@ describe('room creation and websocket routing', () => {
     expect(res.status).toBe(200);
     const body = await res.json<{ code: string }>();
     expect(body.code).toMatch(/^[A-Z2-9]{5}$/);
+  });
+
+  it('POST /api/create-room sets Access-Control-Allow-Origin so cross-origin fetch() can read it', async () => {
+    // The Next.js frontend and this Worker are deployed on different origins in production
+    // (Vercel + workers.dev/custom domain), so the browser blocks reading the response body of
+    // this cross-origin fetch() without a CORS header.
+    const res = await SELF.fetch('https://example.com/api/create-room', { method: 'POST' });
+    expect(res.headers.get('Access-Control-Allow-Origin')).toBe('*');
+  });
+
+  it('OPTIONS /api/create-room answers a CORS preflight', async () => {
+    const res = await SELF.fetch('https://example.com/api/create-room', { method: 'OPTIONS' });
+    expect(res.headers.get('Access-Control-Allow-Origin')).toBe('*');
+    expect(res.headers.get('Access-Control-Allow-Methods')).toContain('POST');
   });
 
   it('GET /ws without a code returns 400', async () => {

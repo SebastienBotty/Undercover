@@ -19,12 +19,29 @@ export default {
     const url = new URL(request.url);
 
     if (url.pathname === '/health') {
-      return new Response('OK');
+      return new Response('OK', {
+        headers: { 'Access-Control-Allow-Origin': '*' },
+      });
+    }
+
+    if (url.pathname === '/api/create-room' && request.method === 'OPTIONS') {
+      return new Response(null, {
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'POST',
+        },
+      });
     }
 
     if (url.pathname === '/api/create-room' && request.method === 'POST') {
+      // The frontend (Next.js on Vercel) and this Worker live on different origins, so the
+      // browser enforces CORS on this fetch(). This endpoint returns nothing sensitive (just a
+      // freshly generated room code), so a permissive '*' is fine for this hobby-scale project.
       return new Response(JSON.stringify({ code: generateRoomCode() }), {
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+        },
       });
     }
 
