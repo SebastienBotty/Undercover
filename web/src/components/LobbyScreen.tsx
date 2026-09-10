@@ -4,6 +4,7 @@ import {
   CLUE_TIMER_MAX_SECONDS,
   type RoomSettings,
   type SimilarityLevel,
+  type GameMode,
 } from "@/lib/hostSettings";
 import { useThemeCatalog } from "@/lib/useThemeCatalog";
 import styles from "./LobbyScreen.module.css";
@@ -71,97 +72,137 @@ export function LobbyScreen({
           <hr className="divider" />
           <h3>Réglages</h3>
 
-          <fieldset className={styles.themesFieldset}>
-            <legend className="muted">Thèmes</legend>
-
-            {!themes && !catalogError && <p className="muted">Chargement des thèmes...</p>}
-            {catalogError && (
-              <p role="alert" className="alert">
-                {catalogError}
-              </p>
-            )}
-
-            {themes?.map((theme) => (
-              <div key={theme.id} className={styles.themeCard}>
-                <label htmlFor={`theme-${theme.id}`} className={styles.themeRow}>
-                  <input
-                    id={`theme-${theme.id}`}
-                    type="checkbox"
-                    checked={settings.themes.includes(theme.id)}
-                    onChange={() => toggleTheme(theme.id)}
-                  />
-                  <span className={styles.themeLabel}>{theme.label}</span>
-                  <span className={styles.themeCount}>({theme.count})</span>
-                </label>
-
-                {theme.series && theme.series.length > 0 && (
-                  <details className={styles.seriesDetails}>
-                    <summary
-                      className={`${styles.seriesSummary}${!settings.themes.includes(theme.id) ? ` ${styles.seriesSummaryDisabled}` : ""}`}
-                      aria-disabled={!settings.themes.includes(theme.id)}
-                      onClick={(e) => {
-                        if (!settings.themes.includes(theme.id)) {
-                          e.preventDefault();
-                        }
-                      }}
-                    >
-                      <span aria-hidden="true" className={styles.seriesArrow}>
-                        ▸
-                      </span>
-                      Choisir les {theme.label.toLowerCase()}s
-                    </summary>
-                    <div className={styles.seriesList}>
-                      {theme.series.map((series) => {
-                        const isChecked =
-                          settings.animeSeries.length === 0 ||
-                          settings.animeSeries.includes(series.id);
-                        return (
-                          <label
-                            key={series.id}
-                            htmlFor={`series-${series.id}`}
-                            className={styles.seriesRow}
-                          >
-                            <input
-                              id={`series-${series.id}`}
-                              type="checkbox"
-                              checked={isChecked}
-                              onChange={() =>
-                                toggleAnimeSeries(
-                                  series.id,
-                                  theme.series!.map((s) => s.id),
-                                )
-                              }
-                            />
-                            <span>{series.label}</span>
-                            <span className={styles.themeCount}>({series.count})</span>
-                          </label>
-                        );
-                      })}
-                    </div>
-                  </details>
-                )}
-              </div>
-            ))}
-          </fieldset>
-
           <div className="field">
-            <label htmlFor="similarity-select">Similarité</label>
+            <label htmlFor="mode-select">Mode de jeu</label>
             <select
-              id="similarity-select"
+              id="mode-select"
               className="input"
-              value={settings.similarityLevel}
-              onChange={(e) =>
-                onSettingsChange({
-                  ...settings,
-                  similarityLevel: e.target.value as SimilarityLevel,
-                })
-              }
+              value={settings.mode}
+              onChange={(e) => onSettingsChange({ ...settings, mode: e.target.value as GameMode })}
             >
-              <option value="none">Aucun lien</option>
-              <option value="close">Proche</option>
-              <option value="very_close">Très proche</option>
+              <option value="classic">Classique</option>
+              <option value="note">Note</option>
             </select>
           </div>
+
+          {settings.mode === "note" ? (
+            <div className="field">
+              <label htmlFor="civil-note-input">Note des Civils (0-20)</label>
+              <input
+                id="civil-note-input"
+                type="number"
+                min={0}
+                max={20}
+                className="input"
+                value={settings.civilNote}
+                onChange={(e) => onSettingsChange({ ...settings, civilNote: Number(e.target.value) })}
+              />
+              <label htmlFor="undercover-note-input">Note des Undercover (0-20)</label>
+              <input
+                id="undercover-note-input"
+                type="number"
+                min={0}
+                max={20}
+                className="input"
+                value={settings.undercoverNote}
+                onChange={(e) => onSettingsChange({ ...settings, undercoverNote: Number(e.target.value) })}
+              />
+            </div>
+          ) : (
+            <>
+              <fieldset className={styles.themesFieldset}>
+                <legend className="muted">Thèmes</legend>
+
+                {!themes && !catalogError && <p className="muted">Chargement des thèmes...</p>}
+                {catalogError && (
+                  <p role="alert" className="alert">
+                    {catalogError}
+                  </p>
+                )}
+
+                {themes?.map((theme) => (
+                  <div key={theme.id} className={styles.themeCard}>
+                    <label htmlFor={`theme-${theme.id}`} className={styles.themeRow}>
+                      <input
+                        id={`theme-${theme.id}`}
+                        type="checkbox"
+                        checked={settings.themes.includes(theme.id)}
+                        onChange={() => toggleTheme(theme.id)}
+                      />
+                      <span className={styles.themeLabel}>{theme.label}</span>
+                      <span className={styles.themeCount}>({theme.count})</span>
+                    </label>
+
+                    {theme.series && theme.series.length > 0 && (
+                      <details className={styles.seriesDetails}>
+                        <summary
+                          className={`${styles.seriesSummary}${!settings.themes.includes(theme.id) ? ` ${styles.seriesSummaryDisabled}` : ""}`}
+                          aria-disabled={!settings.themes.includes(theme.id)}
+                          onClick={(e) => {
+                            if (!settings.themes.includes(theme.id)) {
+                              e.preventDefault();
+                            }
+                          }}
+                        >
+                          <span aria-hidden="true" className={styles.seriesArrow}>
+                            ▸
+                          </span>
+                          Choisir les {theme.label.toLowerCase()}s
+                        </summary>
+                        <div className={styles.seriesList}>
+                          {theme.series.map((series) => {
+                            const isChecked =
+                              settings.animeSeries.length === 0 ||
+                              settings.animeSeries.includes(series.id);
+                            return (
+                              <label
+                                key={series.id}
+                                htmlFor={`series-${series.id}`}
+                                className={styles.seriesRow}
+                              >
+                                <input
+                                  id={`series-${series.id}`}
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  onChange={() =>
+                                    toggleAnimeSeries(
+                                      series.id,
+                                      theme.series!.map((s) => s.id),
+                                    )
+                                  }
+                                />
+                                <span>{series.label}</span>
+                                <span className={styles.themeCount}>({series.count})</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </details>
+                    )}
+                  </div>
+                ))}
+              </fieldset>
+
+              <div className="field">
+                <label htmlFor="similarity-select">Similarité</label>
+                <select
+                  id="similarity-select"
+                  className="input"
+                  value={settings.similarityLevel}
+                  onChange={(e) =>
+                    onSettingsChange({
+                      ...settings,
+                      similarityLevel: e.target.value as SimilarityLevel,
+                    })
+                  }
+                >
+                  <option value="none">Aucun lien</option>
+                  <option value="close">Proche</option>
+                  <option value="very_close">Très proche</option>
+                </select>
+              </div>
+            </>
+          )}
 
           <label htmlFor="mrwhite-checkbox" className="checkboxRow">
             <input

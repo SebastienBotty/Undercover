@@ -230,4 +230,54 @@ describe("LobbyScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: /lancer la partie/i }));
     expect(onStart).toHaveBeenCalled();
   });
+
+  it("shows the mode selector, defaulting to the classic settings panel", async () => {
+    render(
+      <LobbyScreen
+        isHost={true}
+        code="ABCDE"
+        players={players}
+        settings={baseSettings}
+        onStart={() => {}}
+        onSettingsChange={() => {}}
+      />,
+    );
+    expect(screen.getByLabelText(/mode de jeu/i)).toHaveValue("classic");
+    expect(await screen.findByText(/thèmes/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/note des civils/i)).not.toBeInTheDocument();
+  });
+
+  it("switches to the note settings panel and lets the host set both notes", () => {
+    const onSettingsChange = vi.fn();
+    const { rerender } = render(
+      <LobbyScreen
+        isHost={true}
+        code="ABCDE"
+        players={players}
+        settings={baseSettings}
+        onStart={() => {}}
+        onSettingsChange={onSettingsChange}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText(/mode de jeu/i), { target: { value: "note" } });
+    expect(onSettingsChange).toHaveBeenCalledWith(expect.objectContaining({ mode: "note" }));
+
+    rerender(
+      <LobbyScreen
+        isHost={true}
+        code="ABCDE"
+        players={players}
+        settings={{ ...baseSettings, mode: "note" }}
+        onStart={() => {}}
+        onSettingsChange={onSettingsChange}
+      />,
+    );
+    expect(screen.queryByText(/thèmes/i)).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText(/note des civils/i), { target: { value: "16" } });
+    expect(onSettingsChange).toHaveBeenCalledWith(expect.objectContaining({ civilNote: 16 }));
+
+    fireEvent.change(screen.getByLabelText(/note des undercover/i), { target: { value: "9" } });
+    expect(onSettingsChange).toHaveBeenCalledWith(expect.objectContaining({ undercoverNote: 9 }));
+  });
 });
