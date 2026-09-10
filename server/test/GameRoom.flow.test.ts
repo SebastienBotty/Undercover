@@ -826,6 +826,101 @@ describe('GameRoom game flow', () => {
     }
   });
 
+  // Drives a note-mode game to VOTE with Mr. White enabled, then everyone votes Mr. White out.
+  // Uses 5 players (not 3) because mrWhiteEnabled: true needs assignRoles' civilian-majority
+  // guard satisfied (civilCount > specialCount): with 3 players that guard throws -- see FLOW-3
+  // above, which asserts exactly that CANNOT_START_GAME failure -- while 5 players give
+  // undercoverCount=1 + mrWhiteCount=1 = specialCount 2 against civilCount 3, same as the
+  // classic-mode setupMrWhiteRound helper already uses for the same reason.
+  async function startNoteRolesAndReachVote(code: string, mrWhiteEnabled: boolean) {
+    const id = env.GAME_ROOM.idFromName(code);
+    const stub = env.GAME_ROOM.get(id);
+    const wsA = await joinPlayer(stub, code, 'Alice', 'a', true);
+    const wsB = await joinPlayer(stub, code, 'Bob', 'b', false, [wsA]);
+    const wsC = await joinPlayer(stub, code, 'Carl', 'c', false, [wsA, wsB]);
+    const wsD = await joinPlayer(stub, code, 'Dora', 'd', false, [wsA, wsB, wsC]);
+    const wsE = await joinPlayer(stub, code, 'Eve', 'e', false, [wsA, wsB, wsC, wsD]);
+    const sockets: Record<string, WebSocket> = { a: wsA, b: wsB, c: wsC, d: wsD, e: wsE };
+
+    const started = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+    wsA.send(
+      JSON.stringify({
+        type: 'START_GAME',
+        settings: { themes: [], similarityLevel: 'none', mrWhiteEnabled, mode: 'note', civilNote: 14, undercoverNote: 10 },
+      })
+    );
+    const snaps = await started;
+    const roleById: Record<string, string> = {};
+    Object.keys(sockets).forEach((playerId, idx) => {
+      roleById[playerId] = snaps[idx].players.find((p: any) => p.id === playerId).role;
+    });
+
+    async function playOneThemeAndClueRound(passNumber: number) {
+      const afterAlarmA = waitForMessage(wsA);
+      await runDurableObjectAlarm(stub);
+      const themeSelectSnap = await afterAlarmA;
+      const setterId = themeSelectSnap.themeSetterId as string;
+      const afterTheme = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+      sockets[setterId].send(JSON.stringify({ type: 'SUBMIT_THEME', text: `theme-${passNumber}` }));
+      const [clueRoundSnap] = await afterTheme;
+      const order = clueRoundSnap.turnOrder as string[];
+      return submitFullClueRound(sockets, order, passNumber);
+    }
+
+    await playOneThemeAndClueRound(1);
+    const voteSnaps = await playOneThemeAndClueRound(2);
+    return { stub, sockets, roleById, voteSnaps };
+  }
+
+  it('lets Mr. White win by guessing the exact civil note', async () => {
+    const { sockets, roleById, voteSnaps } = await startNoteRolesAndReachVote('FLOW-NOTE-MRWHITE-WIN', true);
+    expect(voteSnaps[0].phase).toBe('VOTE');
+    const mrWhiteId = Object.keys(roleById).find((id) => roleById[id] === 'mrwhite')!;
+
+    // Votes must be submitted one at a time, awaiting each broadcast in turn -- sending them all
+    // in a burst would let each socket's one-shot `waitForMessage` listener consume the first
+    // interim (still-VOTE) broadcast instead of the final elimination one (same pitfall the
+    // tie-vote test above documents).
+    const otherIds = Object.keys(sockets).filter((id) => id !== mrWhiteId);
+    const voters = [...otherIds, mrWhiteId];
+    let eliminationSnaps: any[] = [];
+    for (const voterId of voters) {
+      const next = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+      const targetId = voterId === mrWhiteId ? otherIds[0] : mrWhiteId;
+      sockets[voterId].send(JSON.stringify({ type: 'SUBMIT_VOTE', targetId }));
+      eliminationSnaps = await next;
+    }
+    expect(eliminationSnaps[0].phase).toBe('ELIMINATION');
+
+    const afterGuess = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+    sockets[mrWhiteId].send(JSON.stringify({ type: 'MR_WHITE_GUESS', guess: '14' }));
+    const endSnaps = await afterGuess;
+    expect(endSnaps[0].phase).toBe('END');
+    expect(endSnaps[0].winner).toBe('mrwhite');
+  });
+
+  it('does not let Mr. White win by guessing the wrong note', async () => {
+    const { sockets, roleById, voteSnaps } = await startNoteRolesAndReachVote('FLOW-NOTE-MRWHITE-LOSE', true);
+    expect(voteSnaps[0].phase).toBe('VOTE');
+    const mrWhiteId = Object.keys(roleById).find((id) => roleById[id] === 'mrwhite')!;
+
+    const otherIds = Object.keys(sockets).filter((id) => id !== mrWhiteId);
+    const voters = [...otherIds, mrWhiteId];
+    let eliminationSnaps: any[] = [];
+    for (const voterId of voters) {
+      const next = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+      const targetId = voterId === mrWhiteId ? otherIds[0] : mrWhiteId;
+      sockets[voterId].send(JSON.stringify({ type: 'SUBMIT_VOTE', targetId }));
+      eliminationSnaps = await next;
+    }
+    expect(eliminationSnaps[0].phase).toBe('ELIMINATION');
+
+    const afterGuess = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+    sockets[mrWhiteId].send(JSON.stringify({ type: 'MR_WHITE_GUESS', guess: '2' }));
+    const afterGuessSnaps = await afterGuess;
+    expect(afterGuessSnaps[0].winner).toBeNull();
+  });
+
   it('rejects RESTART_GAME outside the END phase', async () => {
     const code = 'FLOW-RESTART-WRONG-PHASE';
     const id = env.GAME_ROOM.idFromName(code);

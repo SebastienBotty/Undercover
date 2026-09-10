@@ -4,7 +4,7 @@ import type { ClientMessage } from './messages';
 import { buildSnapshot } from './game/snapshot';
 import { assignRoles, buildTurnOrder } from './game/roles';
 import { nextAliveIndex, isClueRoundComplete, nextOddRound, resolveClueTimerSeconds } from './game/clueRound';
-import { tallyVotes, checkWinCondition, checkMrWhiteGuess } from './game/voting';
+import { tallyVotes, checkWinCondition, checkMrWhiteGuess, checkMrWhiteNoteGuess } from './game/voting';
 import { selectCharacterPair } from './characters/selectPair';
 import { CHARACTERS } from './characters/data';
 import { clampNote, notesAreDistinct, pickRandomThemeSetter } from './game/notes';
@@ -385,8 +385,16 @@ export class GameRoom extends DurableObject {
       return;
     }
 
-    const civilCharacter = room.players.find((p) => p.role === 'civil')?.character ?? '';
-    if (checkMrWhiteGuess(guess, civilCharacter)) {
+    let guessedCorrectly: boolean;
+    if (room.settings.mode === 'note') {
+      const civilNote = room.players.find((p) => p.role === 'civil')?.note ?? null;
+      guessedCorrectly = civilNote !== null && checkMrWhiteNoteGuess(guess, civilNote);
+    } else {
+      const civilCharacter = room.players.find((p) => p.role === 'civil')?.character ?? '';
+      guessedCorrectly = checkMrWhiteGuess(guess, civilCharacter);
+    }
+
+    if (guessedCorrectly) {
       room.winner = 'mrwhite';
       room.phase = 'END';
       room.turnDeadline = null;
