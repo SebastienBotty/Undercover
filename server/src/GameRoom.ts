@@ -401,6 +401,9 @@ export class GameRoom extends DurableObject {
         winner: null,
         lastEliminatedId: null,
         turnDeadline: null,
+        themeSetterId: null,
+        currentTheme: null,
+        themes: [],
       };
     }
 
@@ -431,6 +434,7 @@ export class GameRoom extends DurableObject {
         role: null,
         character: null,
         characterImage: null,
+        note: null,
         alive: true,
         connected: true,
       });

@@ -15,6 +15,9 @@ export function buildSnapshot(state: RoomState, forPlayerId: string) {
     winner: state.winner,
     lastEliminatedId: state.lastEliminatedId,
     turnDeadline: state.turnDeadline,
+    themeSetterId: state.themeSetterId,
+    currentTheme: state.currentTheme,
+    themes: state.themes,
     players: state.players.map((p) => {
       const reveal = revealEverything || !p.alive || p.id === forPlayerId;
       return {
@@ -25,6 +28,7 @@ export function buildSnapshot(state: RoomState, forPlayerId: string) {
         role: reveal ? p.role : null,
         character: reveal ? p.character : null,
         characterImage: reveal ? p.characterImage : null,
+        note: reveal ? p.note : null,
       };
     }),
   };
