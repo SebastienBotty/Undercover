@@ -730,6 +730,102 @@ describe('GameRoom game flow', () => {
     expect(errorMsg).toMatchObject({ type: 'ERROR', code: 'NOT_YOUR_TURN' });
   });
 
+  it('passes the theme-setter duty to the next alive player on timeout, without eliminating anyone', async () => {
+    const code = 'FLOW-NOTE-THEME-TIMEOUT';
+    const id = env.GAME_ROOM.idFromName(code);
+    const stub = env.GAME_ROOM.get(id);
+
+    const wsA = await joinPlayer(stub, code, 'Alice', 'a', true);
+    const wsB = await joinPlayer(stub, code, 'Bob', 'b', false, [wsA]);
+    const wsC = await joinPlayer(stub, code, 'Carl', 'c', false, [wsA, wsB]);
+    const sockets: Record<string, WebSocket> = { a: wsA, b: wsB, c: wsC };
+
+    const started = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+    wsA.send(
+      JSON.stringify({
+        type: 'START_GAME',
+        settings: { themes: [], similarityLevel: 'none', mrWhiteEnabled: false, mode: 'note', civilNote: 14, undercoverNote: 10 },
+      })
+    );
+    await started;
+
+    const afterAlarmA = waitForMessage(wsA);
+    await runDurableObjectAlarm(stub);
+    const themeSelectSnap = await afterAlarmA;
+    const firstSetterId = themeSelectSnap.themeSetterId as string;
+
+    const afterTimeout = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+    await runDurableObjectAlarm(stub);
+    const [timeoutSnap] = await afterTimeout;
+
+    expect(timeoutSnap.phase).toBe('THEME_SELECT');
+    expect(timeoutSnap.themeSetterId).not.toBe(firstSetterId);
+    expect(timeoutSnap.turnDeadline).toEqual(expect.any(Number));
+    // Nobody was eliminated -- all three players are still alive.
+    expect(timeoutSnap.players.every((p: any) => p.alive)).toBe(true);
+  });
+
+  it('returns to THEME_SELECT (not CLUE_ROUND) after a tied vote resolves without a winner in note mode', async () => {
+    const code = 'FLOW-NOTE-RESOLVE';
+    const id = env.GAME_ROOM.idFromName(code);
+    const stub = env.GAME_ROOM.get(id);
+
+    const wsA = await joinPlayer(stub, code, 'Alice', 'a', true);
+    const wsB = await joinPlayer(stub, code, 'Bob', 'b', false, [wsA]);
+    const wsC = await joinPlayer(stub, code, 'Carl', 'c', false, [wsA, wsB]);
+    const wsD = await joinPlayer(stub, code, 'Dora', 'd', false, [wsA, wsB, wsC]);
+    const sockets: Record<string, WebSocket> = { a: wsA, b: wsB, c: wsC, d: wsD };
+
+    async function playOneThemeAndClueRound(passNumber: number) {
+      const afterAlarmA = waitForMessage(wsA);
+      await runDurableObjectAlarm(stub);
+      const themeSelectSnap = await afterAlarmA;
+      const setterId = themeSelectSnap.themeSetterId as string;
+      const afterTheme = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+      sockets[setterId].send(JSON.stringify({ type: 'SUBMIT_THEME', text: `theme-${passNumber}` }));
+      const [clueRoundSnap] = await afterTheme;
+      const order = clueRoundSnap.turnOrder as string[];
+      return submitFullClueRound(sockets, order, passNumber);
+    }
+
+    const started = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+    wsA.send(
+      JSON.stringify({
+        type: 'START_GAME',
+        settings: { themes: [], similarityLevel: 'none', mrWhiteEnabled: false, mode: 'note', civilNote: 14, undercoverNote: 10 },
+      })
+    );
+    await started;
+
+    await playOneThemeAndClueRound(1);
+    const voteSnaps = await playOneThemeAndClueRound(2);
+    expect(voteSnaps[0].phase).toBe('VOTE');
+
+    // Two players vote for each other -- a 2-2 tie among 4 alive players resolves with no elimination.
+    // Votes are submitted one at a time (like every other vote loop in this file): SUBMIT_VOTE
+    // broadcasts an interim snapshot after every single vote, not only the last, so firing all
+    // sends at once would let each socket's one-shot listener consume that first interim (still
+    // phase VOTE) broadcast instead of the final resolution.
+    const pendingVotes: [string, string][] = [
+      ['a', 'b'],
+      ['b', 'a'],
+      ['c', 'd'],
+      ['d', 'c'],
+    ];
+    let afterTieSnaps: any[] = [];
+    for (const [voterId, targetId] of pendingVotes) {
+      const next = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+      sockets[voterId].send(JSON.stringify({ type: 'SUBMIT_VOTE', targetId }));
+      afterTieSnaps = await next;
+    }
+
+    for (const snap of afterTieSnaps) {
+      expect(snap.phase).toBe('THEME_SELECT');
+      expect(snap.themeSetterId).toEqual(expect.any(String));
+      expect(snap.players.every((p: any) => p.alive)).toBe(true);
+    }
+  });
+
   it('rejects RESTART_GAME outside the END phase', async () => {
     const code = 'FLOW-RESTART-WRONG-PHASE';
     const id = env.GAME_ROOM.idFromName(code);

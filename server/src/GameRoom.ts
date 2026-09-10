@@ -106,6 +106,17 @@ export class GameRoom extends DurableObject {
       return;
     }
 
+    if (room.phase === 'THEME_SELECT') {
+      const aliveIds = new Set(room.players.filter((p) => p.alive).map((p) => p.id));
+      const currentIndex = room.turnOrder.indexOf(room.themeSetterId!);
+      const nextIndex = nextAliveIndex(room.turnOrder, aliveIds, currentIndex);
+      room.themeSetterId = room.turnOrder[nextIndex];
+      await this.scheduleClueTimeout();
+      await this.saveRoom();
+      this.broadcast();
+      return;
+    }
+
     if (room.phase === 'CLUE_ROUND') {
       const playerId = room.turnOrder[room.currentTurnIndex];
       await this.enterEliminationPhase(playerId);
@@ -281,6 +292,12 @@ export class GameRoom extends DurableObject {
       }
 
       room.round += 1;
+      if (room.settings.mode === 'note') {
+        await this.enterThemeSelect(room);
+        await this.saveRoom();
+        this.broadcast();
+        return;
+      }
       room.currentTurnIndex = nextAliveIndex(room.turnOrder, aliveIds, -1);
       await this.scheduleClueTimeout();
       await this.saveRoom();
@@ -423,6 +440,10 @@ export class GameRoom extends DurableObject {
       return;
     }
     room.round = nextOddRound(room.round);
+    if (room.settings.mode === 'note') {
+      await this.enterThemeSelect(room);
+      return;
+    }
     const aliveIds = new Set(room.players.filter((p) => p.alive).map((p) => p.id));
     room.currentTurnIndex = nextAliveIndex(room.turnOrder, aliveIds, -1);
     room.phase = 'CLUE_ROUND';
