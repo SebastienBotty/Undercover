@@ -7,7 +7,7 @@ import { nextAliveIndex, isClueRoundComplete, nextOddRound, resolveClueTimerSeco
 import { tallyVotes, checkWinCondition, checkMrWhiteGuess } from './game/voting';
 import { selectCharacterPair } from './characters/selectPair';
 import { CHARACTERS } from './characters/data';
-import { clampNote, notesAreDistinct } from './game/notes';
+import { clampNote, notesAreDistinct, pickRandomThemeSetter } from './game/notes';
 
 const STORAGE_KEY = 'room';
 const CLUE_ROUNDS_PER_VOTE = 2;
@@ -65,6 +65,9 @@ export class GameRoom extends DurableObject {
       case 'SUBMIT_CLUE':
         await this.handleSubmitClue(attachment.playerId, msg.text);
         break;
+      case 'SUBMIT_THEME':
+        await this.handleSubmitTheme(attachment.playerId, msg.text);
+        break;
       case 'SUBMIT_VOTE':
         await this.handleSubmitVote(attachment.playerId, msg.targetId);
         break;
@@ -85,8 +88,12 @@ export class GameRoom extends DurableObject {
     if (!room) return;
 
     if (room.phase === 'ROLE_REVEAL') {
-      room.phase = 'CLUE_ROUND';
-      await this.scheduleClueTimeout();
+      if (room.settings.mode === 'note') {
+        await this.enterThemeSelect(room);
+      } else {
+        room.phase = 'CLUE_ROUND';
+        await this.scheduleClueTimeout();
+      }
       await this.saveRoom();
       this.broadcast();
       return;
@@ -114,6 +121,35 @@ export class GameRoom extends DurableObject {
     const deadline = Date.now() + resolveClueTimerSeconds(room.settings.clueTimerSeconds) * 1000;
     room.turnDeadline = deadline;
     await this.ctx.storage.setAlarm(deadline);
+  }
+
+  /** Enters THEME_SELECT for the round in progress: picks a random alive theme-setter and starts the shared turn timer. Reused both after ROLE_REVEAL and after an elimination resolves without a winner. */
+  private async enterThemeSelect(room: RoomState) {
+    const aliveIds = room.players.filter((p) => p.alive).map((p) => p.id);
+    room.themeSetterId = pickRandomThemeSetter(aliveIds, Math.random);
+    room.currentTheme = null;
+    room.phase = 'THEME_SELECT';
+    await this.scheduleClueTimeout();
+  }
+
+  private async handleSubmitTheme(playerId: string, text: string) {
+    const room = this.room!;
+    if (room.phase !== 'THEME_SELECT') {
+      this.sendErrorTo(playerId, 'WRONG_PHASE', "Ce n'est pas le moment de proposer un thème");
+      return;
+    }
+    if (playerId !== room.themeSetterId) {
+      this.sendErrorTo(playerId, 'NOT_YOUR_TURN', "Ce n'est pas ton tour de proposer un thème");
+      return;
+    }
+    room.themes.push({ round: room.round, playerId, text });
+    room.currentTheme = text;
+    room.phase = 'CLUE_ROUND';
+    const aliveIds = new Set(room.players.filter((p) => p.alive).map((p) => p.id));
+    room.currentTurnIndex = nextAliveIndex(room.turnOrder, aliveIds, -1);
+    await this.scheduleClueTimeout();
+    await this.saveRoom();
+    this.broadcast();
   }
 
   private async handleStartGame(playerId: string, settings: RoomSettings) {

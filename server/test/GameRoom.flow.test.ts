@@ -660,6 +660,76 @@ describe('GameRoom game flow', () => {
     ).toBe(true);
   });
 
+  it('enters THEME_SELECT after role reveal in note mode, and SUBMIT_THEME hands off to CLUE_ROUND', async () => {
+    const code = 'FLOW-NOTE-THEME';
+    const id = env.GAME_ROOM.idFromName(code);
+    const stub = env.GAME_ROOM.get(id);
+
+    const wsA = await joinPlayer(stub, code, 'Alice', 'a', true);
+    const wsB = await joinPlayer(stub, code, 'Bob', 'b', false, [wsA]);
+    const wsC = await joinPlayer(stub, code, 'Carl', 'c', false, [wsA, wsB]);
+    const sockets: Record<string, WebSocket> = { a: wsA, b: wsB, c: wsC };
+
+    const started = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+    wsA.send(
+      JSON.stringify({
+        type: 'START_GAME',
+        settings: { themes: [], similarityLevel: 'none', mrWhiteEnabled: false, mode: 'note', civilNote: 14, undercoverNote: 10 },
+      })
+    );
+    await started;
+
+    const afterAlarmA = waitForMessage(wsA);
+    await runDurableObjectAlarm(stub);
+    const themeSelectSnap = await afterAlarmA;
+    expect(themeSelectSnap.phase).toBe('THEME_SELECT');
+    expect(['a', 'b', 'c']).toContain(themeSelectSnap.themeSetterId);
+    expect(themeSelectSnap.turnDeadline).toEqual(expect.any(Number));
+
+    const setterId = themeSelectSnap.themeSetterId as string;
+    const afterTheme = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+    sockets[setterId].send(JSON.stringify({ type: 'SUBMIT_THEME', text: 'Force brute' }));
+    const clueRoundSnaps = await afterTheme;
+
+    for (const snap of clueRoundSnaps) {
+      expect(snap.phase).toBe('CLUE_ROUND');
+      expect(snap.currentTheme).toBe('Force brute');
+      expect(snap.themes).toEqual([{ round: 1, playerId: setterId, text: 'Force brute' }]);
+      expect(snap.turnDeadline).toEqual(expect.any(Number));
+    }
+  });
+
+  it('rejects SUBMIT_THEME from anyone other than the designated theme-setter', async () => {
+    const code = 'FLOW-NOTE-THEME-WRONG-PLAYER';
+    const id = env.GAME_ROOM.idFromName(code);
+    const stub = env.GAME_ROOM.get(id);
+
+    const wsA = await joinPlayer(stub, code, 'Alice', 'a', true);
+    const wsB = await joinPlayer(stub, code, 'Bob', 'b', false, [wsA]);
+    const wsC = await joinPlayer(stub, code, 'Carl', 'c', false, [wsA, wsB]);
+    const sockets: Record<string, WebSocket> = { a: wsA, b: wsB, c: wsC };
+
+    const started = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+    wsA.send(
+      JSON.stringify({
+        type: 'START_GAME',
+        settings: { themes: [], similarityLevel: 'none', mrWhiteEnabled: false, mode: 'note', civilNote: 14, undercoverNote: 10 },
+      })
+    );
+    await started;
+
+    const afterAlarmA = waitForMessage(wsA);
+    await runDurableObjectAlarm(stub);
+    const themeSelectSnap = await afterAlarmA;
+    const setterId = themeSelectSnap.themeSetterId as string;
+    const impostorId = (['a', 'b', 'c'] as const).find((id) => id !== setterId)!;
+
+    const errorPromise = waitForMessage(sockets[impostorId]);
+    sockets[impostorId].send(JSON.stringify({ type: 'SUBMIT_THEME', text: 'Nope' }));
+    const errorMsg = await errorPromise;
+    expect(errorMsg).toMatchObject({ type: 'ERROR', code: 'NOT_YOUR_TURN' });
+  });
+
   it('rejects RESTART_GAME outside the END phase', async () => {
     const code = 'FLOW-RESTART-WRONG-PHASE';
     const id = env.GAME_ROOM.idFromName(code);
