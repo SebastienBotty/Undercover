@@ -8,6 +8,8 @@ interface Player {
   name: string;
   /** Absent/undefined treated as alive -- callers that don't track elimination just omit it. */
   alive?: boolean;
+  /** Absent/undefined treated as connected -- callers that don't track it just omit it. */
+  connected?: boolean;
   /** Only ever non-null for an eliminated player whose role the server chose to reveal. */
   role?: Role | null;
 }
@@ -86,6 +88,7 @@ export function RoundRecapTable({
             const isVotable = votableIds?.has(playerId) ?? false;
             const isSelected = playerId === selectedId;
             const isAlive = player.alive ?? true;
+            const isDisconnected = player.connected === false;
             const revealedRole = !isAlive ? player.role : null;
 
             const rowClass = [isTurn && styles.rowActive, !isAlive && styles.rowEliminated].filter(Boolean).join(' ') || undefined;
@@ -109,7 +112,8 @@ export function RoundRecapTable({
                   ) : (
                     player.name
                   )}
-                  {!isAlive && <span className={`stamp ${styles.eliminatedStamp}`}>Éliminé</span>}
+                  {!isAlive && <span className={`stamp ${styles.inlineStamp}`}>Éliminé</span>}
+                  {isDisconnected && <span className={`stamp ${styles.inlineStamp}`}>Déconnecté</span>}
                   {revealedRole && (
                     <span className={`${styles.roleTag} ${ROLE_CLASS[revealedRole]}`}>{ROLE_LABEL[revealedRole]}</span>
                   )}

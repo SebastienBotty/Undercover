@@ -128,6 +128,23 @@ describe('RoundRecapTable', () => {
     expect(screen.getByText('Civil').className).toMatch(/roleCivil/);
   });
 
+  it('shows a "Déconnecté" stamp next to a disconnected player\'s name, but not a connected one', () => {
+    const withDisconnect = [
+      { id: 'p1', name: 'Alice', connected: true },
+      { id: 'p2', name: 'Bob', connected: false },
+    ];
+    render(<RoundRecapTable players={withDisconnect} turnOrder={turnOrder} clues={clues} totalRounds={1} />);
+    const bobRow = screen.getByText('Bob').closest('tr')!;
+    expect(bobRow).toHaveTextContent('Déconnecté');
+    const aliceRow = screen.getByText('Alice').closest('tr')!;
+    expect(aliceRow).not.toHaveTextContent('Déconnecté');
+  });
+
+  it('treats a player with no connected field as connected (no stamp)', () => {
+    render(<RoundRecapTable players={players} turnOrder={turnOrder} clues={clues} totalRounds={1} />);
+    expect(screen.queryByText('Déconnecté')).not.toBeInTheDocument();
+  });
+
   it('shows a white "Mr. White" tag and never reveals a role for a still-alive player', () => {
     const mixed = [
       { id: 'p1', name: 'Alice', alive: true, role: 'civil' as const }, // own role, revealed to self server-side, but must not show in the table while alive
