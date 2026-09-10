@@ -57,22 +57,26 @@ export function LobbyScreen({
     <div>
       <span className="eyebrow">Salle</span>
       <p className="roomCode">{code}</p>
-      <h3>Joueurs</h3>
-      <ul className="roster">
-        {players.map((p) => (
-          <li key={p.id} className={`rosterItem${!p.connected ? " rosterItemDim" : ""}`}>
-            <span>{p.name}</span>
-            {!p.connected && <span className="stamp">Déconnecté</span>}
-          </li>
-        ))}
-      </ul>
 
-      {isHost && (
-        <div className="field">
-          <hr className="divider" />
+      <div className={styles.columns}>
+        <div className={styles.playersColumn}>
+          <h3>Joueurs</h3>
+          <ul className="roster">
+            {players.map((p) => (
+              <li key={p.id} className={`rosterItem${!p.connected ? " rosterItemDim" : ""}`}>
+                <span>{p.name}</span>
+                {!p.connected && <span className="stamp">Déconnecté</span>}
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <div className={styles.settingsColumn}>
           <h3>Réglages</h3>
+          <fieldset className={styles.settingsFieldset} disabled={!isHost}>
+            {!isHost && <p className={`muted ${styles.viewOnlyNote}`}>Seul l&apos;hôte peut modifier les réglages.</p>}
 
-          <div className="field">
+            <div className="field">
             <label htmlFor="mode-select">Mode de jeu</label>
             <select
               id="mode-select"
@@ -86,38 +90,7 @@ export function LobbyScreen({
           </div>
 
           {settings.mode === "note" ? (
-            <>
-              <div className="field">
-                <label htmlFor="civil-note-input">Note des Civils (0-20)</label>
-                <input
-                  id="civil-note-input"
-                  type="number"
-                  min={0}
-                  max={20}
-                  className="input"
-                  value={settings.civilNote}
-                  onChange={(e) => {
-                    const value = e.target.value === "" ? settings.civilNote : Number(e.target.value);
-                    onSettingsChange({ ...settings, civilNote: value });
-                  }}
-                />
-              </div>
-              <div className="field">
-                <label htmlFor="undercover-note-input">Note des Undercover (0-20)</label>
-                <input
-                  id="undercover-note-input"
-                  type="number"
-                  min={0}
-                  max={20}
-                  className="input"
-                  value={settings.undercoverNote}
-                  onChange={(e) => {
-                    const value = e.target.value === "" ? settings.undercoverNote : Number(e.target.value);
-                    onSettingsChange({ ...settings, undercoverNote: value });
-                  }}
-                />
-              </div>
-            </>
+            <p className="muted">Les notes des Civils et des Undercover sont attribuées au hasard entre 0 et 20.</p>
           ) : (
             <>
               <fieldset className={styles.themesFieldset}>
@@ -271,13 +244,18 @@ export function LobbyScreen({
                 <span className={styles.timerValue}>{settings.clueTimerSeconds}s</span>
               </div>
             )}
-          </div>
+            </div>
+          </fieldset>
 
-          <button onClick={onStart} className="btn btnBlock">
-            Lancer la partie
-          </button>
+          {isHost ? (
+            <button onClick={onStart} className="btn btnBlock">
+              Lancer la partie
+            </button>
+          ) : (
+            <p className="muted">En attente que l&apos;hôte lance la partie...</p>
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
 }

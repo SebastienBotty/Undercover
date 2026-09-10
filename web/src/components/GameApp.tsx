@@ -10,7 +10,7 @@ import { VoteScreen } from '@/components/VoteScreen';
 import { EliminationScreen } from '@/components/EliminationScreen';
 import { EndScreen } from '@/components/EndScreen';
 import { RoleBanner } from '@/components/RoleBanner';
-import { getStoredHostSettings, storeHostSettings, type RoomSettings } from '@/lib/hostSettings';
+import { getStoredHostSettings, storeHostSettings, normalizeSettings, type RoomSettings } from '@/lib/hostSettings';
 
 const PHASES_WITH_ROLE_BANNER = ['THEME_SELECT', 'CLUE_ROUND', 'VOTE', 'ELIMINATION'];
 
@@ -64,6 +64,7 @@ export function GameApp({ roomCode, pseudo, isHost, onLeaveRoom }: GameAppProps)
   function handleSettingsChange(next: RoomSettings) {
     setSettings(next);
     storeHostSettings(next);
+    send({ type: 'UPDATE_SETTINGS', settings: next });
   }
 
   function handleStart() {
@@ -71,16 +72,18 @@ export function GameApp({ roomCode, pseudo, isHost, onLeaveRoom }: GameAppProps)
   }
 
   const me = roomState ? roomState.players.find((p: any) => p.id === getOrCreateClientId()) ?? null : null;
+  const amHost = roomState?.hostId === getOrCreateClientId();
+  const lobbySettings = amHost ? settings : normalizeSettings(roomState?.settings);
 
   function renderPhase() {
     if (!roomState) return <p className="muted">En attente des données de la salle...</p>;
     if (roomState.phase === 'LOBBY') {
       return (
         <LobbyScreen
-          isHost={roomState.hostId === getOrCreateClientId()}
+          isHost={amHost}
           code={roomState.code ?? roomCode}
           players={roomState.players}
-          settings={settings}
+          settings={lobbySettings}
           onStart={handleStart}
           onSettingsChange={handleSettingsChange}
         />
@@ -167,7 +170,7 @@ export function GameApp({ roomCode, pseudo, isHost, onLeaveRoom }: GameAppProps)
 
   return (
     <main className="shell">
-      <div className="card">
+      <div className={`card${roomState?.phase === 'LOBBY' ? ' cardWide' : ''}`}>
         {errorMessage && (
           <p role="alert" className="alert">
             {errorMessage}

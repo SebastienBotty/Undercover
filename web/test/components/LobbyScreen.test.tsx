@@ -31,8 +31,6 @@ const baseSettings = {
   clueTimerEnabled: true,
   clueTimerSeconds: 60,
   mode: "classic" as const,
-  civilNote: 14,
-  undercoverNote: 10,
 };
 
 beforeEach(() => {
@@ -72,7 +70,7 @@ describe("LobbyScreen", () => {
     expect(screen.getByText(/abcde/i)).toBeInTheDocument();
   });
 
-  it("hides the settings form and start button for non-hosts", () => {
+  it("hides the start button for non-hosts and shows a waiting message instead", () => {
     render(
       <LobbyScreen
         isHost={false}
@@ -84,6 +82,25 @@ describe("LobbyScreen", () => {
       />,
     );
     expect(screen.queryByRole("button", { name: /lancer la partie/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/en attente que l'hôte lance la partie/i)).toBeInTheDocument();
+  });
+
+  it("shows the settings to non-hosts but disables every control", async () => {
+    render(
+      <LobbyScreen
+        isHost={false}
+        code="ABCDE"
+        players={players}
+        settings={baseSettings}
+        onStart={() => {}}
+        onSettingsChange={() => {}}
+      />,
+    );
+    expect(await screen.findByLabelText(/^anime/i)).toBeDisabled();
+    expect(screen.getByLabelText(/mr\. white/i)).toBeDisabled();
+    expect(screen.getByLabelText(/mode de jeu/i)).toBeDisabled();
+    expect(screen.getByLabelText(/timer pour les indices/i)).toBeDisabled();
+    expect(screen.getByText(/seul l'hôte peut modifier les réglages/i)).toBeInTheDocument();
   });
 
   it("shows each theme with its character count once the catalog loads", async () => {
@@ -247,7 +264,7 @@ describe("LobbyScreen", () => {
     expect(screen.queryByLabelText(/note des civils/i)).not.toBeInTheDocument();
   });
 
-  it("switches to the note settings panel and lets the host set both notes", () => {
+  it("switches to the note settings panel, explaining notes are assigned at random", () => {
     const onSettingsChange = vi.fn();
     const { rerender } = render(
       <LobbyScreen
@@ -273,11 +290,7 @@ describe("LobbyScreen", () => {
       />,
     );
     expect(screen.queryByText(/thèmes/i)).not.toBeInTheDocument();
-
-    fireEvent.change(screen.getByLabelText(/note des civils/i), { target: { value: "16" } });
-    expect(onSettingsChange).toHaveBeenCalledWith(expect.objectContaining({ civilNote: 16 }));
-
-    fireEvent.change(screen.getByLabelText(/note des undercover/i), { target: { value: "9" } });
-    expect(onSettingsChange).toHaveBeenCalledWith(expect.objectContaining({ undercoverNote: 9 }));
+    expect(screen.getByText(/attribuées au hasard/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/note des civils/i)).not.toBeInTheDocument();
   });
 });

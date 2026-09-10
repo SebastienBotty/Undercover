@@ -1,3 +1,47 @@
+.columns {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.5rem;
+}
+
+@media (min-width: 640px) {
+  .columns {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+    align-items: start;
+  }
+
+  .playersColumn {
+    border-right: 1px dashed var(--panel-border);
+    padding-right: 1.5rem;
+  }
+}
+
+.playersColumn,
+.settingsColumn {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.settingsFieldset {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  border: none;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+
+.settingsFieldset:disabled {
+  opacity: 0.7;
+}
+
+.viewOnlyNote {
+  margin: -0.25rem 0 0;
+}
+
 .themesFieldset {
   border: none;
   padding: 0;
