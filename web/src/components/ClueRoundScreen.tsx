@@ -3,7 +3,8 @@ import { useEffect, useState } from 'react';
 import { RoundRecapTable } from './RoundRecapTable';
 import styles from './ClueRoundScreen.module.css';
 
-interface Player { id: string; name: string; }
+type Role = 'civil' | 'undercover' | 'mrwhite';
+interface Player { id: string; name: string; alive?: boolean; role?: Role | null; }
 interface Clue { playerId: string; round: number; text: string; }
 interface ThemeEntry { round: number; text: string; }
 

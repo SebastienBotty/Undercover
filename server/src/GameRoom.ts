@@ -4,15 +4,24 @@ import type { ClientMessage } from './messages';
 import { buildSnapshot } from './game/snapshot';
 import { assignRoles, buildTurnOrder } from './game/roles';
 import { nextAliveIndex, isClueRoundComplete, nextOddRound, resolveClueTimerSeconds } from './game/clueRound';
-import { tallyVotes, checkWinCondition, checkMrWhiteGuess, checkMrWhiteNoteGuess } from './game/voting';
+import { tallyVotes, checkWinCondition, checkMrWhiteGuess, checkMrWhiteNoteGuess, resolveVoteTimerSeconds, ALL_VOTED_GRACE_MS } from './game/voting';
 import { selectCharacterPair } from './characters/selectPair';
 import { CHARACTERS } from './characters/data';
+import { SERIES_LABELS } from './characters/seriesLabels';
 import { generateDistinctNotes, pickRandomThemeSetter } from './game/notes';
+
+/** Human-readable source-work label for an anime character (e.g. "One Piece"), null for every other theme. */
+function seriesLabelFor(character: { theme: string; series?: string } | null | undefined): string | null {
+  if (!character || character.theme !== 'anime' || !character.series) return null;
+  return SERIES_LABELS[character.series] ?? character.series;
+}
 
 const STORAGE_KEY = 'room';
 const CLUE_ROUNDS_PER_VOTE = 2;
 /** Caps clue/theme text length so a room's persisted state can't grow unbounded. */
 const MAX_TEXT_LENGTH = 200;
+/** Mr. White can only be enabled with this many players or more, so a civilian majority stays possible. */
+const MR_WHITE_MIN_PLAYERS = 5;
 
 interface ConnAttachment {
   playerId: string;
@@ -76,6 +85,9 @@ export class GameRoom extends DurableObject {
       case 'SUBMIT_VOTE':
         await this.handleSubmitVote(attachment.playerId, msg.targetId);
         break;
+      case 'RETRACT_VOTE':
+        await this.handleRetractVote(attachment.playerId);
+        break;
       case 'MR_WHITE_GUESS':
         await this.handleMrWhiteGuess(attachment.playerId, msg.guess);
         break;
@@ -111,6 +123,14 @@ export class GameRoom extends DurableObject {
       return;
     }
 
+    if (room.phase === 'VOTE') {
+      // With the vote timer enabled, resolution happens only here, when the window closes --
+      // not as soon as every alive player has voted, so a slow or absent voter never gets
+      // fast-forwarded past.
+      await this.resolveVotePhase();
+      return;
+    }
+
     if (room.phase === 'THEME_SELECT') {
       const aliveIds = new Set(room.players.filter((p) => p.alive).map((p) => p.id));
       const currentIndex = room.turnOrder.indexOf(room.themeSetterId!);
@@ -141,6 +161,44 @@ export class GameRoom extends DurableObject {
     const deadline = Date.now() + resolveClueTimerSeconds(room.settings.clueTimerSeconds) * 1000;
     room.turnDeadline = deadline;
     await this.ctx.storage.setAlarm(deadline);
+  }
+
+  private async scheduleVoteTimeout() {
+    const room = this.room!;
+    room.allVotedDeadline = null;
+    if (!room.settings.voteTimerEnabled) {
+      room.turnDeadline = null;
+      // Mirrors scheduleClueTimeout's stale-alarm fix: without this, an alarm left pending by a
+      // previous phase would still fire and hit whatever phase the room is in by then.
+      await this.ctx.storage.deleteAlarm();
+      return;
+    }
+    const deadline = Date.now() + resolveVoteTimerSeconds(room.settings.voteTimerSeconds) * 1000;
+    room.turnDeadline = deadline;
+    await this.ctx.storage.setAlarm(deadline);
+  }
+
+  /** Tallies the current votes and moves the room out of VOTE into ELIMINATION, whether or not
+   * anyone was actually eliminated -- a tie/no-votes result still gets its own brief reveal (with
+   * a reason) before the alarm moves the room on, exactly like a real elimination does. Shared by
+   * the vote-timer alarm and by handleSubmitVote's no-timer fast path. */
+  private async resolveVotePhase() {
+    const room = this.room!;
+    const aliveCount = room.players.filter((p) => p.alive).length;
+    const { eliminatedId, reason } = tallyVotes(room.votes, aliveCount);
+    room.votes = {};
+    room.allVotedDeadline = null;
+    if (!eliminatedId) {
+      room.lastEliminatedId = null;
+      room.noEliminationReason = reason;
+      room.phase = 'ELIMINATION';
+      room.turnDeadline = null;
+      await this.saveRoom();
+      this.broadcast();
+      await this.ctx.storage.setAlarm(Date.now() + 5_000);
+      return;
+    }
+    await this.enterEliminationPhase(eliminatedId);
   }
 
   /** Enters THEME_SELECT for the round in progress: picks a random alive theme-setter and starts the shared turn timer. Reused both after ROLE_REVEAL and after an elimination resolves without a winner. */
@@ -206,6 +264,10 @@ export class GameRoom extends DurableObject {
       this.sendErrorTo(playerId, 'NOT_ENOUGH_PLAYERS', 'Il faut au moins 3 joueurs');
       return;
     }
+    if (settings.mrWhiteEnabled && room.players.length < MR_WHITE_MIN_PLAYERS) {
+      this.sendErrorTo(playerId, 'MR_WHITE_MIN_PLAYERS', `Mr. White nécessite au moins ${MR_WHITE_MIN_PLAYERS} joueurs`);
+      return;
+    }
 
     const playerIds = room.players.map((p) => p.id);
     const mode = settings.mode ?? 'classic';
@@ -243,10 +305,12 @@ export class GameRoom extends DurableObject {
         player.note = role === 'civil' ? civilNote : role === 'undercover' ? undercoverNote : null;
         player.character = null;
         player.characterImage = null;
+        player.characterSeries = null;
       } else {
         const assignedCharacter = role === 'civil' ? selection!.civilCharacter : role === 'undercover' ? selection!.undercoverCharacter : null;
         player.character = assignedCharacter?.name ?? null;
         player.characterImage = assignedCharacter?.image ?? null;
+        player.characterSeries = seriesLabelFor(assignedCharacter);
         player.note = null;
       }
     }
@@ -257,6 +321,8 @@ export class GameRoom extends DurableObject {
       similarityLevel: selection?.levelUsed ?? settings.similarityLevel,
       clueTimerEnabled: settings.clueTimerEnabled ?? true,
       clueTimerSeconds: resolveClueTimerSeconds(settings.clueTimerSeconds),
+      voteTimerEnabled: settings.voteTimerEnabled ?? true,
+      voteTimerSeconds: resolveVoteTimerSeconds(settings.voteTimerSeconds),
       ...(mode === 'note' ? { civilNote, undercoverNote } : {}),
     };
     room.turnOrder = buildTurnOrder(playerIds);
@@ -267,6 +333,8 @@ export class GameRoom extends DurableObject {
     room.winner = null;
     room.lastEliminatedId = null;
     room.turnDeadline = null;
+    room.allVotedDeadline = null;
+    room.noEliminationReason = null;
     room.themeSetterId = null;
     room.currentTheme = null;
     room.themes = [];
@@ -310,7 +378,7 @@ export class GameRoom extends DurableObject {
       // so only an even round number after completion actually opens the vote.
       if (room.round % CLUE_ROUNDS_PER_VOTE === 0) {
         room.phase = 'VOTE';
-        room.turnDeadline = null;
+        await this.scheduleVoteTimeout();
         await this.saveRoom();
         this.broadcast();
         return;
@@ -336,7 +404,7 @@ export class GameRoom extends DurableObject {
     this.broadcast();
   }
 
-  private async handleSubmitVote(playerId: string, targetId: string) {
+  private async handleSubmitVote(playerId: string, targetId: string | null) {
     const room = this.room!;
     if (room.phase !== 'VOTE') {
       this.sendErrorTo(playerId, 'WRONG_PHASE', "Ce n'est pas le moment de voter");
@@ -348,33 +416,65 @@ export class GameRoom extends DurableObject {
       return;
     }
 
-    const target = room.players.find((p) => p.id === targetId);
-    if (!target || !target.alive) {
-      this.sendErrorTo(playerId, 'INVALID_VOTE_TARGET', 'Cible de vote invalide');
-      return;
+    if (targetId !== null) {
+      const target = room.players.find((p) => p.id === targetId);
+      if (!target || !target.alive) {
+        this.sendErrorTo(playerId, 'INVALID_VOTE_TARGET', 'Cible de vote invalide');
+        return;
+      }
     }
 
+    // The vote never resolves synchronously here -- it only actually counts when the window
+    // closes (see alarm()'s VOTE branch). A player can change their mind (including switching
+    // to/from abstaining) as many times as they want before then.
     room.votes[playerId] = targetId;
+    await this.recomputeVoteDeadline();
 
+    await this.saveRoom();
+    this.broadcast();
+  }
+
+  private async handleRetractVote(playerId: string) {
+    const room = this.room!;
+    if (room.phase !== 'VOTE') {
+      this.sendErrorTo(playerId, 'WRONG_PHASE', "Ce n'est pas le moment de voter");
+      return;
+    }
+    const voter = room.players.find((p) => p.id === playerId);
+    if (!voter || !voter.alive) {
+      this.sendErrorTo(playerId, 'NOT_ALIVE', 'Tu ne peux plus voter');
+      return;
+    }
+
+    delete room.votes[playerId];
+    await this.recomputeVoteDeadline();
+
+    await this.saveRoom();
+    this.broadcast();
+  }
+
+  /** Re-arms the DO's single alarm around whichever deadline is now relevant for VOTE: the
+   * ALL_VOTED_GRACE_MS grace period once every alive player has voted (started or restarted by
+   * every call to this while that stays true, so a changed vote resets the countdown), or the
+   * original main vote timer once someone retracts and it's no longer everyone. */
+  private async recomputeVoteDeadline() {
+    const room = this.room!;
     const aliveIds = room.players.filter((p) => p.alive).map((p) => p.id);
-    if (!aliveIds.every((id) => room.votes[id])) {
-      await this.saveRoom();
-      this.broadcast();
+    const everyoneVoted = aliveIds.length > 0 && aliveIds.every((id) => id in room.votes);
+
+    if (everyoneVoted) {
+      const deadline = Date.now() + ALL_VOTED_GRACE_MS;
+      room.allVotedDeadline = deadline;
+      await this.ctx.storage.setAlarm(deadline);
       return;
     }
 
-    const { eliminatedId, tie } = tallyVotes(room.votes);
-    room.votes = {};
-
-    if (tie || !eliminatedId) {
-      room.lastEliminatedId = null;
-      await this.resolveAfterElimination(room);
-      await this.saveRoom();
-      this.broadcast();
-      return;
+    room.allVotedDeadline = null;
+    if (room.settings.voteTimerEnabled && room.turnDeadline) {
+      await this.ctx.storage.setAlarm(room.turnDeadline);
+    } else {
+      await this.ctx.storage.deleteAlarm();
     }
-
-    await this.enterEliminationPhase(eliminatedId);
   }
 
   /**
@@ -393,6 +493,7 @@ export class GameRoom extends DurableObject {
     const eliminatedPlayer = room.players.find((p) => p.id === eliminatedId)!;
     eliminatedPlayer.alive = false;
     room.lastEliminatedId = eliminatedId;
+    room.noEliminationReason = null;
     room.phase = 'ELIMINATION';
     room.turnDeadline = null;
 
@@ -446,6 +547,7 @@ export class GameRoom extends DurableObject {
       player.role = null;
       player.character = null;
       player.characterImage = null;
+      player.characterSeries = null;
       player.note = null;
       player.alive = true;
     }
@@ -458,6 +560,8 @@ export class GameRoom extends DurableObject {
     room.winner = null;
     room.lastEliminatedId = null;
     room.turnDeadline = null;
+    room.allVotedDeadline = null;
+    room.noEliminationReason = null;
     room.themeSetterId = null;
     room.currentTheme = null;
     room.themes = [];
@@ -519,6 +623,8 @@ export class GameRoom extends DurableObject {
         winner: null,
         lastEliminatedId: null,
         turnDeadline: null,
+        allVotedDeadline: null,
+        noEliminationReason: null,
         themeSetterId: null,
         currentTheme: null,
         themes: [],
@@ -552,6 +658,7 @@ export class GameRoom extends DurableObject {
         role: null,
         character: null,
         characterImage: null,
+        characterSeries: null,
         note: null,
         alive: true,
         connected: true,

@@ -1,0 +1,21 @@
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 1.25rem;
+}
+
+.roleCivil {
+  color: var(--accent-strong);
+  font-weight: 600;
+}
+
+.roleUndercover {
+  color: var(--danger-strong);
+  font-weight: 600;
+}
+
+.roleMrwhite {
+  color: var(--text);
+  font-weight: 600;
+}

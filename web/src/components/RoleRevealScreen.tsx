@@ -7,6 +7,7 @@ interface RoleRevealScreenProps {
   role: Role | null;
   character: string | null;
   characterImage?: string | null;
+  characterSeries?: string | null;
   note?: number | null;
 }
 
@@ -16,7 +17,7 @@ const ROLE_LABEL: Record<Role, string> = {
   mrwhite: 'Mr. White',
 };
 
-export function RoleRevealScreen({ role, character, characterImage, note }: RoleRevealScreenProps) {
+export function RoleRevealScreen({ role, character, characterImage, characterSeries, note }: RoleRevealScreenProps) {
   if (!role) return <p className="muted">Chargement de ton rôle...</p>;
 
   if (role === 'mrwhite') {
@@ -62,7 +63,10 @@ export function RoleRevealScreen({ role, character, characterImage, note }: Role
           )}
           <div className={styles.dossierText}>
             <div className={styles.censorBar} />
-            <p className={styles.identity}>{character}</p>
+            <p className={styles.identity}>
+              {character}
+              {characterSeries && <span className={styles.series}> ({characterSeries})</span>}
+            </p>
           </div>
         </div>
       )}

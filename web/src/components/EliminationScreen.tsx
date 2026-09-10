@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import styles from './EliminationScreen.module.css';
 
 type Role = 'civil' | 'undercover' | 'mrwhite';
 
@@ -12,13 +13,23 @@ interface Player {
   note?: number | null;
 }
 
+type NoEliminationReason = 'tie' | 'no_votes' | 'no_majority';
+
 interface EliminationScreenProps {
   players: Player[];
   lastEliminatedId: string | null;
+  /** Why the vote didn't eliminate anyone, when it didn't -- shown instead of the generic message. */
+  noEliminationReason?: NoEliminationReason | null;
   selfId: string;
   mode?: 'classic' | 'note';
   onMrWhiteGuess: (guess: string) => void;
 }
+
+const NO_ELIMINATION_LABEL: Record<NoEliminationReason, string> = {
+  tie: 'Égalité entre plusieurs joueurs',
+  no_votes: "Personne n'a voté",
+  no_majority: "Pas de majorité parmi les joueurs vivants",
+};
 
 const ROLE_LABEL: Record<Role, string> = {
   civil: 'un Civil',
@@ -26,13 +37,39 @@ const ROLE_LABEL: Record<Role, string> = {
   mrwhite: 'Mr. White',
 };
 
-export function EliminationScreen({ players, lastEliminatedId, selfId, mode = 'classic', onMrWhiteGuess }: EliminationScreenProps) {
+const ROLE_CLASS: Record<Role, string> = {
+  civil: styles.roleCivil,
+  undercover: styles.roleUndercover,
+  mrwhite: styles.roleMrwhite,
+};
+
+export function EliminationScreen({
+  players,
+  lastEliminatedId,
+  noEliminationReason,
+  selfId,
+  mode = 'classic',
+  onMrWhiteGuess,
+}: EliminationScreenProps) {
   const [guess, setGuess] = useState('');
   const eliminated = players.find((p) => p.id === lastEliminatedId);
 
-  if (!eliminated) return <p className="muted">Personne n'a été éliminé ce tour-ci.</p>;
+  if (!eliminated) {
+    return (
+      <div>
+        <span className="eyebrow">Verdict</span>
+        <h2>Personne n&apos;est éliminé</h2>
+        <p className="muted">
+          {noEliminationReason
+            ? `${NO_ELIMINATION_LABEL[noEliminationReason]} : personne n'a été éliminé ce tour-ci.`
+            : "Personne n'a été éliminé ce tour-ci."}
+        </p>
+      </div>
+    );
+  }
 
-  const isSelfMrWhiteAwaitingGuess = eliminated.id === selfId && eliminated.role === 'mrwhite';
+  const isSelf = eliminated.id === selfId;
+  const isSelfMrWhiteAwaitingGuess = isSelf && eliminated.role === 'mrwhite';
   const revealedDetail = eliminated.character
     ? ` (${eliminated.character})`
     : eliminated.note != null
@@ -42,12 +79,24 @@ export function EliminationScreen({ players, lastEliminatedId, selfId, mode = 'c
   return (
     <div>
       <span className="eyebrow">Verdict</span>
-      <h2>
-        {eliminated.name} <span className="stamp">Éliminé</span>
+      <h2 className={isSelf ? styles.selfEliminated : undefined}>
+        {isSelf ? (
+          'Tu as été éliminé'
+        ) : (
+          <>
+            {eliminated.name} <span className="stamp">Éliminé</span>
+          </>
+        )}
       </h2>
       <p className="muted">
-        C'était {eliminated.role ? ROLE_LABEL[eliminated.role] : ''}
-        {revealedDetail}
+        {eliminated.role ? (
+          <>
+            C'était <span className={ROLE_CLASS[eliminated.role]}>{ROLE_LABEL[eliminated.role]}</span>
+            {revealedDetail}
+          </>
+        ) : (
+          "Son rôle reste secret."
+        )}
       </p>
 
       {isSelfMrWhiteAwaitingGuess && (

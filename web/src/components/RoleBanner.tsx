@@ -7,6 +7,7 @@ interface RoleBannerProps {
   role: Role | null;
   character: string | null;
   characterImage?: string | null;
+  characterSeries?: string | null;
   note?: number | null;
 }
 
@@ -16,7 +17,7 @@ const ROLE_LABEL: Record<Role, string> = {
   mrwhite: 'Mr. White',
 };
 
-export function RoleBanner({ role, character, characterImage, note }: RoleBannerProps) {
+export function RoleBanner({ role, character, characterImage, characterSeries, note }: RoleBannerProps) {
   if (!role) return null;
 
   return (
@@ -34,7 +35,13 @@ export function RoleBanner({ role, character, characterImage, note }: RoleBanner
       )}
       <span className="muted">Ton rôle : </span>
       <span className={role === 'undercover' ? styles.undercover : styles.role}>{ROLE_LABEL[role]}</span>
-      {character && <span className={styles.word}> — {character}</span>}
+      {character && (
+        <span className={styles.word}>
+          {' '}
+          — {character}
+          {characterSeries && <span className={styles.series}> ({characterSeries})</span>}
+        </span>
+      )}
       {note != null && <span className={styles.word}> — {note}/20</span>}
     </div>
   );

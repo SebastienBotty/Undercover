@@ -36,6 +36,18 @@ describe('RoleRevealScreen', () => {
     expect(screen.getByText(/ta note : 14\/20/i)).toBeInTheDocument();
   });
 
+  it('shows the source anime series in parentheses next to the character name', () => {
+    render(<RoleRevealScreen role="civil" character="Goku" characterSeries="Dragon Ball" />);
+    expect(screen.getByText('Goku')).toBeInTheDocument();
+    expect(screen.getByText('(Dragon Ball)')).toBeInTheDocument();
+  });
+
+  it('does not show a series parenthetical for non-anime characters', () => {
+    render(<RoleRevealScreen role="civil" character="Napoléon" characterSeries={null} />);
+    expect(screen.getByText('Napoléon')).toBeInTheDocument();
+    expect(screen.queryByText(/\(.*\)/)).not.toBeInTheDocument();
+  });
+
   it('colors the role red for an undercover even in note mode', () => {
     render(<RoleRevealScreen role="undercover" character={null} note={10} />);
     expect(screen.getByText(/ta note : 10\/20/i)).toBeInTheDocument();

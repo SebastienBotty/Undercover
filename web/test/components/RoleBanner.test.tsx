@@ -13,6 +13,12 @@ describe('RoleBanner', () => {
     expect(screen.getByText(/goku/i)).toBeInTheDocument();
   });
 
+  it('shows the source anime series in parentheses next to the character name', () => {
+    render(<RoleBanner role="civil" character="Goku" characterSeries="Dragon Ball" />);
+    expect(screen.getByText(/goku/i)).toBeInTheDocument();
+    expect(screen.getByText('(Dragon Ball)')).toBeInTheDocument();
+  });
+
   it('shows the note instead of the character in note mode', () => {
     render(<RoleBanner role="civil" character={null} note={14} />);
     expect(screen.getByText(/14\/20/)).toBeInTheDocument();

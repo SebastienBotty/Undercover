@@ -1,0 +1,99 @@
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.timerGroup {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-width: 0;
+}
+
+.progressTrack {
+  width: 6rem;
+  max-width: 30vw;
+  height: 0.4rem;
+  border-radius: 999px;
+  background: var(--panel-alt);
+  border: 1px solid var(--panel-border);
+  overflow: hidden;
+}
+
+.progressFill {
+  height: 100%;
+  width: 100%;
+  background: var(--accent-strong);
+  border-radius: inherit;
+  /* Width's own transition is set inline (see VoteScreen.tsx) so its duration matches the exact
+     remaining vote time instead of a fixed step, which is what made the bar look jerky. */
+  transition: background-color 0.2s ease;
+}
+
+.progressFillUrgent {
+  background: var(--danger-strong);
+}
+
+.timer {
+  font-family: var(--font-display);
+  font-size: 1rem;
+  color: var(--accent-strong);
+  border: 1.5px solid var(--accent);
+  border-radius: 999px;
+  padding: 0.15rem 0.7rem;
+  white-space: nowrap;
+  display: inline-flex;
+  justify-content: center;
+  /* Fits up to "180s" (VOTE_TIMER_MAX_SECONDS) so the badge doesn't resize as the digit count
+     drops from e.g. "60s" to "9s", which shoved the progress bar next to it around. */
+  min-width: 4.5rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.timerUrgent {
+  color: var(--danger-strong);
+  border-color: var(--danger-strong);
+  animation: pulse 1s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+.voteCount {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  margin-bottom: 0.5rem;
+}
+
+/* Always rendered (with a placeholder digit) so its box keeps reserving the same height/margin
+   whether or not it's actually showing -- otherwise the rest of the screen jumps up/down every
+   time it appears or disappears. */
+.allVotedNotice {
+  color: var(--accent-strong);
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-bottom: 0.75rem;
+  visibility: hidden;
+}
+
+.allVotedNoticeVisible {
+  visibility: visible;
+}
+
+.abstainButton {
+  margin-top: 0.75rem;
+}
+
+.abstainSelected {
+  background: var(--danger-strong);
+  color: #fff;
+  border-color: var(--danger-strong);
+}

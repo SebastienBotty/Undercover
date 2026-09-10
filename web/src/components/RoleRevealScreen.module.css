@@ -26,14 +26,16 @@
 }
 
 .photo {
-  width: 18rem;
-  max-width: 100%;
-  aspect-ratio: 1;
+  /* No fixed width/aspect-ratio: the image keeps its natural aspect ratio and is only capped by
+     these maxes, so the border below hugs the actual photo instead of a square box with empty
+     letterboxed space around a non-square source. */
+  width: auto;
   height: auto;
+  max-width: min(18rem, 100%);
+  max-height: 18rem;
   flex-shrink: 0;
   border-radius: 6px;
   border: 1px solid var(--panel-border-light);
-  object-fit: cover;
   filter: grayscale(0.5) contrast(1.05);
 }
 
@@ -54,6 +56,11 @@
   font-size: 1.6rem;
   color: var(--accent-strong);
   letter-spacing: 0.02em;
+}
+
+.series {
+  font-size: 1rem;
+  color: var(--text-muted);
 }
 
 .blank {

@@ -1,10 +1,28 @@
 'use client';
 import styles from './RoundRecapTable.module.css';
 
+type Role = 'civil' | 'undercover' | 'mrwhite';
+
 interface Player {
   id: string;
   name: string;
+  /** Absent/undefined treated as alive -- callers that don't track elimination just omit it. */
+  alive?: boolean;
+  /** Only ever non-null for an eliminated player whose role the server chose to reveal. */
+  role?: Role | null;
 }
+
+const ROLE_LABEL: Record<Role, string> = {
+  civil: 'Civil',
+  undercover: 'Undercover',
+  mrwhite: 'Mr. White',
+};
+
+const ROLE_CLASS: Record<Role, string> = {
+  civil: styles.roleCivil,
+  undercover: styles.roleUndercover,
+  mrwhite: styles.roleMrwhite,
+};
 
 interface Clue {
   playerId: string;
@@ -67,9 +85,13 @@ export function RoundRecapTable({
             const isTurn = playerId === currentTurnPlayerId;
             const isVotable = votableIds?.has(playerId) ?? false;
             const isSelected = playerId === selectedId;
+            const isAlive = player.alive ?? true;
+            const revealedRole = !isAlive ? player.role : null;
+
+            const rowClass = [isTurn && styles.rowActive, !isAlive && styles.rowEliminated].filter(Boolean).join(' ') || undefined;
 
             return (
-              <tr key={playerId} className={isTurn ? styles.rowActive : undefined}>
+              <tr key={playerId} className={rowClass}>
                 <td className={styles.flagCell}>{isTurn && <span aria-label="C'est son tour">🚩</span>}</td>
                 <td className={styles.nameCell}>
                   {isVotable ? (
@@ -78,10 +100,18 @@ export function RoundRecapTable({
                       className={`btn btnBlock ${isSelected ? styles.selected : 'btnGhost'}`}
                     >
                       {player.name}
-                      {isSelected && <span className={styles.check}> ✓</span>}
+                      {/* Always rendered (space reserved via visibility, not display) so selecting
+                          a player doesn't widen its cell and shift the whole column's width. */}
+                      <span className={`${styles.check}${isSelected ? ` ${styles.checkVisible}` : ''}`} aria-hidden="true">
+                        {' '}✓
+                      </span>
                     </button>
                   ) : (
                     player.name
+                  )}
+                  {!isAlive && <span className={`stamp ${styles.eliminatedStamp}`}>Éliminé</span>}
+                  {revealedRole && (
+                    <span className={`${styles.roleTag} ${ROLE_CLASS[revealedRole]}`}>{ROLE_LABEL[revealedRole]}</span>
                   )}
                 </td>
                 {rounds.map((r) => {

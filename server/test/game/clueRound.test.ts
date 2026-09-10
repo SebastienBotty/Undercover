@@ -63,8 +63,8 @@ describe('nextOddRound', () => {
 });
 
 describe('resolveClueTimerSeconds', () => {
-  it('defaults to 60s when the host requested no value', () => {
-    expect(resolveClueTimerSeconds(undefined)).toBe(60);
+  it('defaults to 30s when the host requested no value', () => {
+    expect(resolveClueTimerSeconds(undefined)).toBe(30);
   });
 
   it('passes through a value already within [30, 90]', () => {

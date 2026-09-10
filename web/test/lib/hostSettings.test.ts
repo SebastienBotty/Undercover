@@ -12,8 +12,11 @@ describe('host settings storage', () => {
       mrWhiteEnabled: false,
       animeSeries: [],
       clueTimerEnabled: true,
-      clueTimerSeconds: 60,
+      clueTimerSeconds: 30,
+      voteTimerEnabled: true,
+      voteTimerSeconds: 60,
       mode: 'classic',
+      revealRoleOnElimination: true,
     });
   });
 
@@ -25,7 +28,10 @@ describe('host settings storage', () => {
       animeSeries: ['one-piece', 'naruto'],
       clueTimerEnabled: false,
       clueTimerSeconds: 45,
+      voteTimerEnabled: false,
+      voteTimerSeconds: 90,
       mode: 'note',
+      revealRoleOnElimination: false,
     });
     expect(getStoredHostSettings()).toEqual({
       themes: ['anime', 'films'],
@@ -34,7 +40,10 @@ describe('host settings storage', () => {
       animeSeries: ['one-piece', 'naruto'],
       clueTimerEnabled: false,
       clueTimerSeconds: 45,
+      voteTimerEnabled: false,
+      voteTimerSeconds: 90,
       mode: 'note',
+      revealRoleOnElimination: false,
     });
   });
 
@@ -46,7 +55,10 @@ describe('host settings storage', () => {
     const settings = getStoredHostSettings();
     expect(settings.animeSeries).toEqual([]);
     expect(settings.clueTimerEnabled).toBe(true);
-    expect(settings.clueTimerSeconds).toBe(60);
+    expect(settings.clueTimerSeconds).toBe(30);
+    expect(settings.voteTimerEnabled).toBe(true);
+    expect(settings.voteTimerSeconds).toBe(60);
     expect(settings.mode).toBe('classic');
+    expect(settings.revealRoleOnElimination).toBe(true);
   });
 });

@@ -67,7 +67,13 @@ describe('RoundRecapTable', () => {
         onVote={() => {}}
       />
     );
-    expect(screen.getByRole('button', { name: /bob/i })).toHaveTextContent('✓');
+    const bob = screen.getByRole('button', { name: /bob/i });
+    const alice = screen.getByRole('button', { name: /alice/i });
+    expect(bob.querySelector('[aria-hidden="true"]')?.className).toMatch(/checkVisible/);
+    // Not selected -- the checkmark space is still reserved (rendered, just hidden), so voting
+    // for someone doesn't change any button's width and shift the table's layout.
+    expect(alice.querySelector('[aria-hidden="true"]')?.className ?? '').not.toMatch(/checkVisible/);
+    expect(alice).toHaveTextContent('✓');
   });
 
   it('shows the theme as a subtitle under the round header when provided', () => {
@@ -88,5 +94,47 @@ describe('RoundRecapTable', () => {
       <RoundRecapTable players={players} turnOrder={turnOrder} clues={clues} totalRounds={1} themes={[]} />
     );
     expect(screen.getByText('Manche 1')).toBeInTheDocument();
+  });
+
+  it('darkens the whole row of an eliminated player', () => {
+    const withElimination = [
+      { id: 'p1', name: 'Alice', alive: true },
+      { id: 'p2', name: 'Bob', alive: false, role: null },
+    ];
+    render(<RoundRecapTable players={withElimination} turnOrder={turnOrder} clues={clues} totalRounds={1} />);
+    expect(screen.getByText('Bob').closest('tr')?.className).toMatch(/rowEliminated/);
+    expect(screen.getByText('Alice').closest('tr')?.className ?? '').not.toMatch(/rowEliminated/);
+  });
+
+  it('shows an "Éliminé" stamp next to an eliminated player\'s name, but not an alive one', () => {
+    const withElimination = [
+      { id: 'p1', name: 'Alice', alive: true },
+      { id: 'p2', name: 'Bob', alive: false, role: null },
+    ];
+    render(<RoundRecapTable players={withElimination} turnOrder={turnOrder} clues={clues} totalRounds={1} />);
+    const bobRow = screen.getByText('Bob').closest('tr')!;
+    expect(bobRow).toHaveTextContent('Éliminé');
+    const aliceRow = screen.getByText('Alice').closest('tr')!;
+    expect(aliceRow).not.toHaveTextContent('Éliminé');
+  });
+
+  it('shows the revealed role under an eliminated player\'s name, colored by role', () => {
+    const withRoles = [
+      { id: 'p1', name: 'Alice', alive: false, role: 'undercover' as const },
+      { id: 'p2', name: 'Bob', alive: false, role: 'civil' as const },
+    ];
+    render(<RoundRecapTable players={withRoles} turnOrder={turnOrder} clues={clues} totalRounds={1} />);
+    expect(screen.getByText('Undercover').className).toMatch(/roleUndercover/);
+    expect(screen.getByText('Civil').className).toMatch(/roleCivil/);
+  });
+
+  it('shows a white "Mr. White" tag and never reveals a role for a still-alive player', () => {
+    const mixed = [
+      { id: 'p1', name: 'Alice', alive: true, role: 'civil' as const }, // own role, revealed to self server-side, but must not show in the table while alive
+      { id: 'p2', name: 'Bob', alive: false, role: 'mrwhite' as const },
+    ];
+    render(<RoundRecapTable players={mixed} turnOrder={turnOrder} clues={clues} totalRounds={1} />);
+    expect(screen.getByText('Mr. White').className).toMatch(/roleMrwhite/);
+    expect(screen.queryByText('Civil')).not.toBeInTheDocument();
   });
 });

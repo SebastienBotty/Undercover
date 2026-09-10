@@ -31,7 +31,7 @@ export function nextOddRound(round: number): number {
 
 export const CLUE_TIMER_MIN_SECONDS = 30;
 export const CLUE_TIMER_MAX_SECONDS = 90;
-export const CLUE_TIMER_DEFAULT_SECONDS = 60;
+export const CLUE_TIMER_DEFAULT_SECONDS = 30;
 
 /** Clamps the host's requested clue-timer duration into the [30, 90]s range the slider allows. */
 export function resolveClueTimerSeconds(requestedSeconds: number | undefined): number {

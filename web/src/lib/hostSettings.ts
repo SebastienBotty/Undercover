@@ -4,6 +4,11 @@ export type GameMode = 'classic' | 'note';
 
 export const CLUE_TIMER_MIN_SECONDS = 30;
 export const CLUE_TIMER_MAX_SECONDS = 90;
+export const CLUE_TIMER_DEFAULT_SECONDS = 30;
+
+export const VOTE_TIMER_MIN_SECONDS = 30;
+export const VOTE_TIMER_MAX_SECONDS = 180;
+export const VOTE_TIMER_DEFAULT_SECONDS = 60;
 
 export interface RoomSettings {
   themes: string[];
@@ -15,8 +20,14 @@ export interface RoomSettings {
   clueTimerEnabled: boolean;
   /** Clue submission window in seconds, between CLUE_TIMER_MIN_SECONDS and CLUE_TIMER_MAX_SECONDS. */
   clueTimerSeconds: number;
+  /** Whether the vote phase resolves on a fixed countdown rather than as soon as everyone has voted. */
+  voteTimerEnabled: boolean;
+  /** Vote window in seconds, between VOTE_TIMER_MIN_SECONDS and VOTE_TIMER_MAX_SECONDS. */
+  voteTimerSeconds: number;
   /** 'classic' (character-based) or 'note' (numeric-note-based). */
   mode: GameMode;
+  /** Whether an eliminated player's role/character/note is revealed to the other players. */
+  revealRoleOnElimination: boolean;
 }
 
 const STORAGE_KEY = 'undercover:hostSettings';
@@ -27,8 +38,11 @@ const DEFAULT_SETTINGS: RoomSettings = {
   mrWhiteEnabled: false,
   animeSeries: [],
   clueTimerEnabled: true,
-  clueTimerSeconds: 60,
+  clueTimerSeconds: CLUE_TIMER_DEFAULT_SECONDS,
+  voteTimerEnabled: true,
+  voteTimerSeconds: VOTE_TIMER_DEFAULT_SECONDS,
   mode: 'classic',
+  revealRoleOnElimination: true,
 };
 
 export function getStoredHostSettings(): RoomSettings {

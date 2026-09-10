@@ -6,7 +6,8 @@ export type ClientMessage =
   | { type: 'UPDATE_SETTINGS'; settings: RoomSettings }
   | { type: 'SUBMIT_CLUE'; text: string }
   | { type: 'SUBMIT_THEME'; text: string }
-  | { type: 'SUBMIT_VOTE'; targetId: string }
+  | { type: 'SUBMIT_VOTE'; targetId: string | null }
+  | { type: 'RETRACT_VOTE' }
   | { type: 'MR_WHITE_GUESS'; guess: string }
   | { type: 'RESTART_GAME' };
 

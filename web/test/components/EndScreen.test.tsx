@@ -21,6 +21,22 @@ describe('EndScreen', () => {
     expect(screen.getByText(/vegeta/i)).toBeInTheDocument();
   });
 
+  it("gives each role its own color, distinct from the others", () => {
+    const allRoles = [
+      { id: 'p1', name: 'Alice', role: 'civil' as const, character: 'Goku' },
+      { id: 'p2', name: 'Bob', role: 'undercover' as const, character: 'Vegeta' },
+      { id: 'p3', name: 'Carl', role: 'mrwhite' as const, character: null },
+    ];
+    render(<EndScreen winner="civil" players={allRoles} isHost={false} onRestart={() => {}} onLeave={() => {}} />);
+    const civil = screen.getByText('Civil');
+    const undercover = screen.getByText('Undercover');
+    const mrwhite = screen.getByText('Mr. White');
+    expect(civil.className).not.toBe('');
+    expect(undercover.className).not.toBe('');
+    expect(mrwhite.className).not.toBe('');
+    expect(new Set([civil.className, undercover.className, mrwhite.className]).size).toBe(3);
+  });
+
   it('calls onLeave when the quit button is clicked', () => {
     const onLeave = vi.fn();
     render(<EndScreen winner="civil" players={players} isHost={false} onRestart={() => {}} onLeave={onLeave} />);

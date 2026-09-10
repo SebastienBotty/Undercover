@@ -1,6 +1,7 @@
 .wrapper {
   width: 100%;
   overflow-x: auto;
+  margin-bottom: 1.25rem;
 }
 
 .table {
@@ -62,6 +63,11 @@
 
 .check {
   font-weight: 700;
+  visibility: hidden;
+}
+
+.checkVisible {
+  visibility: visible;
 }
 
 .themeSubtitle {
@@ -72,4 +78,37 @@
   font-size: 0.7rem;
   margin-top: 0.15rem;
   white-space: normal;
+}
+
+.rowEliminated {
+  /* Darkens every cell in the row (name, role tag, clue text) while keeping each element's own
+     color -- unlike opacity, brightness() dims the color itself rather than fading toward the
+     page background, so a role tag stays "the right color, just darker" as requested. */
+  filter: brightness(0.55);
+}
+
+.eliminatedStamp {
+  margin-left: 0.5rem;
+  vertical-align: middle;
+}
+
+.roleTag {
+  display: block;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-top: 0.15rem;
+}
+
+.roleCivil {
+  color: var(--accent-strong);
+}
+
+.roleUndercover {
+  color: var(--danger-strong);
+}
+
+.roleMrwhite {
+  color: var(--text);
 }

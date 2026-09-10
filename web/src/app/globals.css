@@ -100,13 +100,17 @@ p {
   display: flex;
   flex-direction: column;
   gap: 1rem;
-  transition: max-width 0.2s ease;
+  transition: width 0.2s ease, max-width 0.2s ease;
 }
 
 /* Modifier: the lobby's two-column layout (players | settings) needs more breathing room
-   than the narrow single-column dossier card every other screen uses. Combine with .card. */
+   than the narrow single-column dossier card every other screen uses. Combine with .card.
+   A fixed `width` (rather than just a bigger `max-width`) keeps the card the same size
+   whether the settings panel is showing the 3-column classic layout or the shorter note
+   layout, instead of shrinking to fit whichever content is narrower. */
 .cardWide {
-  max-width: 760px;
+  width: 1040px;
+  max-width: 100%;
 }
 
 /* A small stamped case-file label — used above headings for real identifying info (room codes, phase names). */

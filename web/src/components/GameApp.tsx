@@ -10,6 +10,7 @@ import { VoteScreen } from '@/components/VoteScreen';
 import { EliminationScreen } from '@/components/EliminationScreen';
 import { EndScreen } from '@/components/EndScreen';
 import { RoleBanner } from '@/components/RoleBanner';
+import { RoomCodeBadge } from '@/components/RoomCodeBadge';
 import { getStoredHostSettings, storeHostSettings, normalizeSettings, type RoomSettings } from '@/lib/hostSettings';
 
 const PHASES_WITH_ROLE_BANNER = ['THEME_SELECT', 'CLUE_ROUND', 'VOTE', 'ELIMINATION'];
@@ -53,6 +54,7 @@ export function GameApp({ roomCode, pseudo, isHost, onLeaveRoom }: GameAppProps)
   if (status === 'connecting' || status === 'idle') {
     return (
       <main className="shell">
+        <RoomCodeBadge code={roomCode} />
         <div className="card">
           <span className="eyebrow">Undercover</span>
           <p className="muted">Connexion à la salle {roomCode}...</p>
@@ -95,6 +97,7 @@ export function GameApp({ roomCode, pseudo, isHost, onLeaveRoom }: GameAppProps)
           role={me?.role ?? null}
           character={me?.character ?? null}
           characterImage={me?.characterImage ?? null}
+          characterSeries={me?.characterSeries ?? null}
           note={me?.note ?? null}
         />
       );
@@ -138,8 +141,13 @@ export function GameApp({ roomCode, pseudo, isHost, onLeaveRoom }: GameAppProps)
           clues={roomState.clues}
           round={roomState.round}
           themes={roomState.themes}
+          turnDeadline={roomState.turnDeadline}
+          voteDurationSeconds={roomState.settings?.voteTimerSeconds}
+          votedCount={roomState.votedCount}
+          allVotedDeadline={roomState.allVotedDeadline}
           selfId={getOrCreateClientId()}
           onVote={(targetId) => send({ type: 'SUBMIT_VOTE', targetId })}
+          onRetractVote={() => send({ type: 'RETRACT_VOTE' })}
         />
       );
     }
@@ -148,6 +156,7 @@ export function GameApp({ roomCode, pseudo, isHost, onLeaveRoom }: GameAppProps)
         <EliminationScreen
           players={roomState.players}
           lastEliminatedId={roomState.lastEliminatedId}
+          noEliminationReason={roomState.noEliminationReason}
           selfId={getOrCreateClientId()}
           mode={roomState.settings?.mode}
           onMrWhiteGuess={(guess) => send({ type: 'MR_WHITE_GUESS', guess })}
@@ -170,6 +179,7 @@ export function GameApp({ roomCode, pseudo, isHost, onLeaveRoom }: GameAppProps)
 
   return (
     <main className="shell">
+      <RoomCodeBadge code={roomState?.code ?? roomCode} />
       <div className={`card${roomState?.phase === 'LOBBY' ? ' cardWide' : ''}`}>
         {errorMessage && (
           <p role="alert" className="alert">
@@ -181,6 +191,7 @@ export function GameApp({ roomCode, pseudo, isHost, onLeaveRoom }: GameAppProps)
             role={me?.role ?? null}
             character={me?.character ?? null}
             characterImage={me?.characterImage ?? null}
+            characterSeries={me?.characterSeries ?? null}
             note={me?.note ?? null}
           />
         )}

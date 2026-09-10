@@ -1,10 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { LobbyScreen } from "@/components/LobbyScreen";
 
 const players = [
   { id: "p1", name: "Alice", alive: true, connected: true },
   { id: "p2", name: "Bob", alive: true, connected: true },
+  { id: "p3", name: "Carl", alive: true, connected: true },
+  { id: "p4", name: "Dora", alive: true, connected: true },
+  { id: "p5", name: "Eve", alive: true, connected: true },
 ];
 
 const catalogResponse = {
@@ -29,8 +32,11 @@ const baseSettings = {
   mrWhiteEnabled: false,
   animeSeries: [],
   clueTimerEnabled: true,
-  clueTimerSeconds: 60,
+  clueTimerSeconds: 30,
+  voteTimerEnabled: true,
+  voteTimerSeconds: 60,
   mode: "classic" as const,
+  revealRoleOnElimination: true,
 };
 
 beforeEach(() => {
@@ -38,6 +44,7 @@ beforeEach(() => {
     "fetch",
     vi.fn(async () => ({ json: async () => catalogResponse })),
   );
+  Object.assign(navigator, { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } });
 });
 
 describe("LobbyScreen", () => {
@@ -70,6 +77,23 @@ describe("LobbyScreen", () => {
     expect(screen.getByText(/abcde/i)).toBeInTheDocument();
   });
 
+  it("copies the room code to the clipboard when clicked, with brief confirmation feedback", async () => {
+    render(
+      <LobbyScreen
+        isHost={true}
+        code="ABCDE"
+        players={players}
+        settings={baseSettings}
+        onStart={() => {}}
+        onSettingsChange={() => {}}
+      />,
+    );
+    const button = screen.getByRole("button", { name: /copier le code de la salle/i });
+    fireEvent.click(button);
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith("ABCDE");
+    await waitFor(() => expect(screen.getByText(/copié/i)).toBeInTheDocument());
+  });
+
   it("hides the start button for non-hosts and shows a waiting message instead", () => {
     render(
       <LobbyScreen
@@ -98,9 +122,31 @@ describe("LobbyScreen", () => {
     );
     expect(await screen.findByLabelText(/^anime/i)).toBeDisabled();
     expect(screen.getByLabelText(/mr\. white/i)).toBeDisabled();
-    expect(screen.getByLabelText(/mode de jeu/i)).toBeDisabled();
-    expect(screen.getByLabelText(/timer pour les indices/i)).toBeDisabled();
+    expect(screen.getByRole("radio", { name: /classique/i })).toBeDisabled();
+    expect(screen.getByRole("radio", { name: /^note$/i })).toBeDisabled();
+    expect(screen.getByLabelText(/^timer$/i)).toBeDisabled();
+    expect(screen.getByLabelText(/révéler le rôle à l'élimination/i)).toBeDisabled();
     expect(screen.getByText(/seul l'hôte peut modifier les réglages/i)).toBeInTheDocument();
+  });
+
+  it("lets the host toggle whether roles are revealed on elimination", () => {
+    const onSettingsChange = vi.fn();
+    render(
+      <LobbyScreen
+        isHost={true}
+        code="ABCDE"
+        players={players}
+        settings={baseSettings}
+        onStart={() => {}}
+        onSettingsChange={onSettingsChange}
+      />,
+    );
+    const checkbox = screen.getByLabelText(/révéler le rôle à l'élimination/i);
+    expect(checkbox).toBeChecked();
+    fireEvent.click(checkbox);
+    expect(onSettingsChange).toHaveBeenCalledWith(
+      expect.objectContaining({ revealRoleOnElimination: false }),
+    );
   });
 
   it("shows each theme with its character count once the catalog loads", async () => {
@@ -117,6 +163,54 @@ describe("LobbyScreen", () => {
     expect(await screen.findByText("(45)")).toBeInTheDocument();
     expect(screen.getByLabelText(/^films/i)).toBeInTheDocument();
     expect(screen.getByText("(12)")).toBeInTheDocument();
+  });
+
+  it("disables Mr. White and shows a hint when there are fewer than 5 players", () => {
+    const fewPlayers = players.slice(0, 3);
+    render(
+      <LobbyScreen
+        isHost={true}
+        code="ABCDE"
+        players={fewPlayers}
+        settings={baseSettings}
+        onStart={() => {}}
+        onSettingsChange={() => {}}
+      />,
+    );
+    expect(screen.getByLabelText(/mr\. white/i)).toBeDisabled();
+    expect(screen.getByText(/nécessite 5 joueurs minimum/i)).toBeInTheDocument();
+  });
+
+  it("re-enables Mr. White once the room reaches 5 players", () => {
+    render(
+      <LobbyScreen
+        isHost={true}
+        code="ABCDE"
+        players={players}
+        settings={baseSettings}
+        onStart={() => {}}
+        onSettingsChange={() => {}}
+      />,
+    );
+    expect(screen.getByLabelText(/mr\. white/i)).not.toBeDisabled();
+    expect(screen.queryByText(/nécessite 5 joueurs minimum/i)).not.toBeInTheDocument();
+  });
+
+  it("automatically turns Mr. White off if the player count drops below the minimum", () => {
+    const onSettingsChange = vi.fn();
+    render(
+      <LobbyScreen
+        isHost={true}
+        code="ABCDE"
+        players={players.slice(0, 2)}
+        settings={{ ...baseSettings, mrWhiteEnabled: true }}
+        onStart={() => {}}
+        onSettingsChange={onSettingsChange}
+      />,
+    );
+    expect(onSettingsChange).toHaveBeenCalledWith(
+      expect.objectContaining({ mrWhiteEnabled: false }),
+    );
   });
 
   it("lets the host toggle a theme and Mr White, and calls onSettingsChange", async () => {
@@ -158,6 +252,23 @@ describe("LobbyScreen", () => {
     expect(screen.getByText("(3)")).toBeInTheDocument();
   });
 
+  it("lets non-host viewers still expand the read-only anime series panel", async () => {
+    render(
+      <LobbyScreen
+        isHost={false}
+        code="ABCDE"
+        players={players}
+        settings={{ ...baseSettings, themes: ["anime"] }}
+        onStart={() => {}}
+        onSettingsChange={() => {}}
+      />,
+    );
+    const toggle = await screen.findByText(/choisir les animes/i);
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+  });
+
   it('unchecking an anime series materializes the implicit "all series" into an explicit list', async () => {
     const onSettingsChange = vi.fn();
     render(
@@ -182,7 +293,26 @@ describe("LobbyScreen", () => {
     );
   });
 
-  it("shows the timer slider when the clue timer is enabled and hides it when disabled", () => {
+  it("hides the timer settings panel until the Timer checkbox is checked", () => {
+    render(
+      <LobbyScreen
+        isHost={true}
+        code="ABCDE"
+        players={players}
+        settings={baseSettings}
+        onStart={() => {}}
+        onSettingsChange={() => {}}
+      />,
+    );
+    expect(screen.queryByText(/temps d'indice/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/temps de vote/i)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText(/^timer$/i));
+    expect(screen.getByText(/temps d'indice/i)).toBeInTheDocument();
+    expect(screen.getByText(/temps de vote/i)).toBeInTheDocument();
+  });
+
+  it("shows each timer's slider only while that timer is enabled", () => {
     const { rerender } = render(
       <LobbyScreen
         isHost={true}
@@ -193,19 +323,22 @@ describe("LobbyScreen", () => {
         onSettingsChange={() => {}}
       />,
     );
-    expect(screen.getByLabelText(/durée du timer/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText(/^timer$/i));
+    expect(screen.getByLabelText(/durée du temps d'indice/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/durée du temps de vote/i)).toBeInTheDocument();
 
     rerender(
       <LobbyScreen
         isHost={true}
         code="ABCDE"
         players={players}
-        settings={{ ...baseSettings, clueTimerEnabled: false }}
+        settings={{ ...baseSettings, clueTimerEnabled: false, voteTimerEnabled: false }}
         onStart={() => {}}
         onSettingsChange={() => {}}
       />,
     );
-    expect(screen.queryByLabelText(/durée du timer/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/durée du temps d'indice/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/durée du temps de vote/i)).not.toBeInTheDocument();
   });
 
   it("lets the host toggle the clue timer off and change its duration", () => {
@@ -220,15 +353,41 @@ describe("LobbyScreen", () => {
         onSettingsChange={onSettingsChange}
       />,
     );
+    fireEvent.click(screen.getByLabelText(/^timer$/i));
 
-    fireEvent.change(screen.getByLabelText(/durée du timer/i), { target: { value: "30" } });
+    fireEvent.change(screen.getByLabelText(/durée du temps d'indice/i), { target: { value: "45" } });
     expect(onSettingsChange).toHaveBeenCalledWith(
-      expect.objectContaining({ clueTimerSeconds: 30 }),
+      expect.objectContaining({ clueTimerSeconds: 45 }),
     );
 
-    fireEvent.click(screen.getByLabelText(/timer pour les indices/i));
+    fireEvent.click(screen.getByLabelText(/^temps d'indice$/i));
     expect(onSettingsChange).toHaveBeenCalledWith(
       expect.objectContaining({ clueTimerEnabled: false }),
+    );
+  });
+
+  it("lets the host toggle the vote timer off and change its duration, independently of the clue timer", () => {
+    const onSettingsChange = vi.fn();
+    render(
+      <LobbyScreen
+        isHost={true}
+        code="ABCDE"
+        players={players}
+        settings={baseSettings}
+        onStart={() => {}}
+        onSettingsChange={onSettingsChange}
+      />,
+    );
+    fireEvent.click(screen.getByLabelText(/^timer$/i));
+
+    fireEvent.change(screen.getByLabelText(/durée du temps de vote/i), { target: { value: "90" } });
+    expect(onSettingsChange).toHaveBeenCalledWith(
+      expect.objectContaining({ voteTimerSeconds: 90 }),
+    );
+
+    fireEvent.click(screen.getByLabelText(/^temps de vote$/i));
+    expect(onSettingsChange).toHaveBeenCalledWith(
+      expect.objectContaining({ voteTimerEnabled: false }),
     );
   });
 
@@ -259,7 +418,8 @@ describe("LobbyScreen", () => {
         onSettingsChange={() => {}}
       />,
     );
-    expect(screen.getByLabelText(/mode de jeu/i)).toHaveValue("classic");
+    expect(screen.getByRole("radio", { name: /classique/i })).toBeChecked();
+    expect(screen.getByRole("radio", { name: /^note$/i })).not.toBeChecked();
     expect(await screen.findByText(/thèmes/i)).toBeInTheDocument();
     expect(screen.queryByLabelText(/note des civils/i)).not.toBeInTheDocument();
   });
@@ -276,7 +436,7 @@ describe("LobbyScreen", () => {
         onSettingsChange={onSettingsChange}
       />,
     );
-    fireEvent.change(screen.getByLabelText(/mode de jeu/i), { target: { value: "note" } });
+    fireEvent.click(screen.getByRole("radio", { name: /^note$/i }));
     expect(onSettingsChange).toHaveBeenCalledWith(expect.objectContaining({ mode: "note" }));
 
     rerender(

@@ -49,6 +49,15 @@ async function submitFullClueRound(sockets: Record<string, WebSocket>, turnOrder
   return lastResults;
 }
 
+// Votes only resolve when the 2-minute vote timer expires (not as soon as everyone has voted),
+// so every test that needs the elimination to actually happen fires the alarm and waits for the
+// resulting broadcast.
+async function resolveVoteTimer(stub: DurableObjectStub, sockets: Record<string, WebSocket>) {
+  const next = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+  await runDurableObjectAlarm(stub);
+  return next;
+}
+
 describe('GameRoom game flow', () => {
   it('runs a full 3-player round without Mr. White', async () => {
     const code = 'FLOW-1';
@@ -68,6 +77,12 @@ describe('GameRoom game flow', () => {
     );
     const [snapA] = await started;
     expect(snapA.phase).toBe('ROLE_REVEAL');
+    // Every anime character carries its source work: self-view gets the label, other players get null.
+    const selfPlayer = snapA.players.find((p: any) => p.id === 'a');
+    expect(typeof selfPlayer.characterSeries).toBe('string');
+    expect(selfPlayer.characterSeries.length).toBeGreaterThan(0);
+    const otherPlayer = snapA.players.find((p: any) => p.id !== 'a');
+    expect(otherPlayer.characterSeries).toBeNull();
 
     const id2 = env.GAME_ROOM.idFromName(code);
     const stub2 = env.GAME_ROOM.get(id2);
@@ -93,16 +108,15 @@ describe('GameRoom game flow', () => {
     // vote flow resolves. Vote all for 'a' being safe is wrong if 'a' must survive; instead vote
     // for the second player in turnOrder to keep the test deterministic regardless of role assignment.
     const target = turnOrder[1];
-    const voteResults: any[] = [];
     for (const playerId of turnOrder) {
       const ws = sockets[playerId];
       const next = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
       ws.send(JSON.stringify({ type: 'SUBMIT_VOTE', targetId: target }));
-      const results = await next;
-      voteResults.push(results[0]);
+      await next;
     }
 
-    const finalSnap = voteResults[voteResults.length - 1];
+    const voteSnaps = await resolveVoteTimer(stub, sockets);
+    const finalSnap = voteSnaps[0];
     // Fix 1: the ELIMINATION phase must actually be broadcast (not skipped straight to the
     // resolved next phase) before the alarm-driven reveal delay advances the game further.
     expect(finalSnap.phase).toBe('ELIMINATION');
@@ -177,7 +191,7 @@ describe('GameRoom game flow', () => {
     expect(error).toMatchObject({ type: 'ERROR', code: 'NOT_YOUR_TURN' });
   });
 
-  it('rejects START_GAME when the settings cannot guarantee a civilian majority', async () => {
+  it('rejects START_GAME with Mr. White enabled when there are fewer than 5 players', async () => {
     const code = 'FLOW-3';
     const id = env.GAME_ROOM.idFromName(code);
     const stub = env.GAME_ROOM.get(id);
@@ -186,8 +200,8 @@ describe('GameRoom game flow', () => {
     const wsB = await joinPlayer(stub, code, 'Bob', 'b', false, [wsA]);
     const wsC = await joinPlayer(stub, code, 'Carl', 'c', false, [wsA, wsB]);
 
-    // 3 players + mrWhiteEnabled: true => 1 undercover + 1 Mr. White + only 1 civil left,
-    // which fails assignRoles' civilian-majority guard (civilCount <= specialCount).
+    // Mr. White needs at least 5 players (otherwise a civilian majority isn't possible) --
+    // GameRoom rejects this explicitly before even attempting role assignment.
     const errorPromise = waitForMessage(wsA);
     wsA.send(
       JSON.stringify({
@@ -196,7 +210,7 @@ describe('GameRoom game flow', () => {
       })
     );
     const error = await errorPromise;
-    expect(error).toMatchObject({ type: 'ERROR', code: 'CANNOT_START_GAME' });
+    expect(error).toMatchObject({ type: 'ERROR', code: 'MR_WHITE_MIN_PLAYERS' });
 
     // The room must not have been half-mutated by the failed attempt: a valid START_GAME
     // right afterwards should still succeed normally.
@@ -292,19 +306,409 @@ describe('GameRoom game flow', () => {
     // The bogus vote must not have been recorded: a full, valid round of voting (including a
     // real vote from the same first player) must still resolve the round normally afterwards.
     const target = turnOrder[1];
-    const voteResults: any[] = [];
     for (const playerId of turnOrder) {
       const ws = sockets[playerId];
       const next = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
       ws.send(JSON.stringify({ type: 'SUBMIT_VOTE', targetId: target }));
-      const results = await next;
-      voteResults.push(results[0]);
+      await next;
     }
 
-    const finalSnap = voteResults[voteResults.length - 1];
+    const voteSnaps = await resolveVoteTimer(stub, sockets);
+    const finalSnap = voteSnaps[0];
     expect(finalSnap.phase).toBe('ELIMINATION');
     const eliminatedPlayer = finalSnap.players.find((p: any) => p.id === target);
     expect(eliminatedPlayer.alive).toBe(false);
+  });
+
+  it('does not resolve the vote until the 2-minute timer expires, even once every alive player has voted', async () => {
+    const code = 'FLOW-VOTE-TIMER';
+    const id = env.GAME_ROOM.idFromName(code);
+    const stub = env.GAME_ROOM.get(id);
+
+    const wsA = await joinPlayer(stub, code, 'Alice', 'a', true);
+    const wsB = await joinPlayer(stub, code, 'Bob', 'b', false, [wsA]);
+    const wsC = await joinPlayer(stub, code, 'Carl', 'c', false, [wsA, wsB]);
+    const sockets: Record<string, WebSocket> = { a: wsA, b: wsB, c: wsC };
+
+    const started = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+    wsA.send(
+      JSON.stringify({
+        type: 'START_GAME',
+        settings: { themes: ['anime'], similarityLevel: 'none', mrWhiteEnabled: false },
+      })
+    );
+    await started;
+
+    const afterAlarmA = waitForMessage(wsA);
+    await runDurableObjectAlarm(stub);
+    const clueRoundSnap = await afterAlarmA;
+    const turnOrder = clueRoundSnap.turnOrder as string[];
+
+    await submitFullClueRound(sockets, turnOrder, 1);
+    const voteSnaps = await submitFullClueRound(sockets, turnOrder, 2);
+    expect(voteSnaps[0].phase).toBe('VOTE');
+    expect(voteSnaps[0].turnDeadline).toEqual(expect.any(Number)); // the 2-minute window is now running
+
+    const target = turnOrder[1];
+    let lastVoteSnap: any;
+    for (const playerId of turnOrder) {
+      const next = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+      sockets[playerId].send(JSON.stringify({ type: 'SUBMIT_VOTE', targetId: target }));
+      [lastVoteSnap] = await next;
+    }
+    // Every alive player has now voted for the same target, but the room stays in VOTE --
+    // resolution only happens when the timer fires (see the next assertion).
+    expect(lastVoteSnap.phase).toBe('VOTE');
+    expect(lastVoteSnap.turnDeadline).toEqual(expect.any(Number));
+
+    const eliminationSnaps = await resolveVoteTimer(stub, sockets);
+    expect(eliminationSnaps[0].phase).toBe('ELIMINATION');
+    expect(eliminationSnaps[0].lastEliminatedId).toBe(target);
+  });
+
+  it('lets a player abstain, and their abstention does not count toward any candidate', async () => {
+    const code = 'FLOW-VOTE-ABSTAIN';
+    const id = env.GAME_ROOM.idFromName(code);
+    const stub = env.GAME_ROOM.get(id);
+
+    const wsA = await joinPlayer(stub, code, 'Alice', 'a', true);
+    const wsB = await joinPlayer(stub, code, 'Bob', 'b', false, [wsA]);
+    const wsC = await joinPlayer(stub, code, 'Carl', 'c', false, [wsA, wsB]);
+    const wsD = await joinPlayer(stub, code, 'Dora', 'd', false, [wsA, wsB, wsC]);
+    const wsE = await joinPlayer(stub, code, 'Eve', 'e', false, [wsA, wsB, wsC, wsD]);
+    const sockets: Record<string, WebSocket> = { a: wsA, b: wsB, c: wsC, d: wsD, e: wsE };
+
+    const started = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+    wsA.send(
+      JSON.stringify({
+        type: 'START_GAME',
+        settings: { themes: ['anime'], similarityLevel: 'none', mrWhiteEnabled: false },
+      })
+    );
+    await started;
+
+    const afterAlarmA = waitForMessage(wsA);
+    await runDurableObjectAlarm(stub);
+    const clueRoundSnap = await afterAlarmA;
+    const turnOrder = clueRoundSnap.turnOrder as string[];
+
+    await submitFullClueRound(sockets, turnOrder, 1);
+    const voteSnaps = await submitFullClueRound(sockets, turnOrder, 2);
+    expect(voteSnaps[0].phase).toBe('VOTE');
+
+    // a, d and e vote for b (3 votes -- an absolute majority of the 5 alive players); b votes for
+    // a (1 vote, not enough to matter either way); c abstains. Confirms the abstention isn't
+    // tallied toward anyone: with 5 alive, only b's 3 votes clear the strict-majority bar.
+    const votes: [string, string | null][] = [
+      ['a', 'b'],
+      ['b', 'a'],
+      ['c', null],
+      ['d', 'b'],
+      ['e', 'b'],
+    ];
+    for (const [voterId, targetId] of votes) {
+      const next = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+      sockets[voterId].send(JSON.stringify({ type: 'SUBMIT_VOTE', targetId }));
+      await next;
+    }
+
+    const eliminationSnaps = await resolveVoteTimer(stub, sockets);
+    expect(eliminationSnaps[0].phase).toBe('ELIMINATION');
+    expect(eliminationSnaps[0].lastEliminatedId).toBe('b');
+  });
+
+  it('eliminates nobody when a single vote leads but falls short of a majority of alive players (1 of 4, the rest abstaining)', async () => {
+    const code = 'FLOW-VOTE-NO-MAJORITY';
+    const id = env.GAME_ROOM.idFromName(code);
+    const stub = env.GAME_ROOM.get(id);
+
+    const wsA = await joinPlayer(stub, code, 'Alice', 'a', true);
+    const wsB = await joinPlayer(stub, code, 'Bob', 'b', false, [wsA]);
+    const wsC = await joinPlayer(stub, code, 'Carl', 'c', false, [wsA, wsB]);
+    const wsD = await joinPlayer(stub, code, 'Dora', 'd', false, [wsA, wsB, wsC]);
+    const sockets: Record<string, WebSocket> = { a: wsA, b: wsB, c: wsC, d: wsD };
+
+    const started = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+    wsA.send(
+      JSON.stringify({
+        type: 'START_GAME',
+        settings: { themes: ['anime'], similarityLevel: 'none', mrWhiteEnabled: false },
+      })
+    );
+    await started;
+
+    const afterAlarmA = waitForMessage(wsA);
+    await runDurableObjectAlarm(stub);
+    const clueRoundSnap = await afterAlarmA;
+    const turnOrder = clueRoundSnap.turnOrder as string[];
+
+    await submitFullClueRound(sockets, turnOrder, 1);
+    const voteSnaps = await submitFullClueRound(sockets, turnOrder, 2);
+    expect(voteSnaps[0].phase).toBe('VOTE');
+
+    // Only a votes, for b; b, c and d all abstain. b technically "leads" with 1 vote, but that's
+    // only 1 of the 4 alive players -- nowhere near a majority -- so nobody should be eliminated.
+    const target = 'b';
+    const votes: [string, string | null][] = [
+      ['a', target],
+      ['b', null],
+      ['c', null],
+      ['d', null],
+    ];
+    for (const [voterId, targetId] of votes) {
+      const next = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+      sockets[voterId].send(JSON.stringify({ type: 'SUBMIT_VOTE', targetId }));
+      await next;
+    }
+
+    const eliminationSnaps = await resolveVoteTimer(stub, sockets);
+    expect(eliminationSnaps[0].phase).toBe('ELIMINATION');
+    expect(eliminationSnaps[0].lastEliminatedId).toBeNull();
+    expect(eliminationSnaps[0].noEliminationReason).toBe('no_majority');
+    expect(eliminationSnaps[0].players.find((p: any) => p.id === target).alive).toBe(true);
+  });
+
+  it('resolves with no elimination when every alive player abstains', async () => {
+    const code = 'FLOW-VOTE-ALL-ABSTAIN';
+    const id = env.GAME_ROOM.idFromName(code);
+    const stub = env.GAME_ROOM.get(id);
+
+    const wsA = await joinPlayer(stub, code, 'Alice', 'a', true);
+    const wsB = await joinPlayer(stub, code, 'Bob', 'b', false, [wsA]);
+    const wsC = await joinPlayer(stub, code, 'Carl', 'c', false, [wsA, wsB]);
+    const sockets: Record<string, WebSocket> = { a: wsA, b: wsB, c: wsC };
+
+    const started = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+    wsA.send(
+      JSON.stringify({
+        type: 'START_GAME',
+        settings: { themes: ['anime'], similarityLevel: 'none', mrWhiteEnabled: false },
+      })
+    );
+    await started;
+
+    const afterAlarmA = waitForMessage(wsA);
+    await runDurableObjectAlarm(stub);
+    const clueRoundSnap = await afterAlarmA;
+    const turnOrder = clueRoundSnap.turnOrder as string[];
+
+    await submitFullClueRound(sockets, turnOrder, 1);
+    await submitFullClueRound(sockets, turnOrder, 2);
+
+    for (const playerId of turnOrder) {
+      const next = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+      sockets[playerId].send(JSON.stringify({ type: 'SUBMIT_VOTE', targetId: null }));
+      await next;
+    }
+
+    // No elimination still gets a brief ELIMINATION reveal (with a reason) before the room moves
+    // on, exactly like a real elimination does -- it isn't skipped straight to the next phase.
+    const noElimSnaps = await resolveVoteTimer(stub, sockets);
+    expect(noElimSnaps[0].phase).toBe('ELIMINATION');
+    expect(noElimSnaps[0].lastEliminatedId).toBeNull();
+    expect(noElimSnaps[0].noEliminationReason).toBe('no_votes');
+
+    const resolvedSnaps = await resolveVoteTimer(stub, sockets);
+    expect(resolvedSnaps[0].lastEliminatedId).toBeNull();
+    expect(resolvedSnaps[0].phase).toBe('CLUE_ROUND');
+    expect(resolvedSnaps[0].players.every((p: any) => p.alive)).toBe(true);
+  });
+
+  it('broadcasts a live count of how many alive players have voted, and arms a short grace deadline once everyone has, ending the vote before the main timer expires', async () => {
+    const code = 'FLOW-VOTE-LIVE-COUNT';
+    const id = env.GAME_ROOM.idFromName(code);
+    const stub = env.GAME_ROOM.get(id);
+
+    const wsA = await joinPlayer(stub, code, 'Alice', 'a', true);
+    const wsB = await joinPlayer(stub, code, 'Bob', 'b', false, [wsA]);
+    const wsC = await joinPlayer(stub, code, 'Carl', 'c', false, [wsA, wsB]);
+    const sockets: Record<string, WebSocket> = { a: wsA, b: wsB, c: wsC };
+
+    const started = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+    wsA.send(
+      JSON.stringify({
+        type: 'START_GAME',
+        settings: { themes: ['anime'], similarityLevel: 'none', mrWhiteEnabled: false },
+      })
+    );
+    await started;
+
+    const afterAlarmA = waitForMessage(wsA);
+    await runDurableObjectAlarm(stub);
+    const clueRoundSnap = await afterAlarmA;
+    const turnOrder = clueRoundSnap.turnOrder as string[];
+
+    await submitFullClueRound(sockets, turnOrder, 1);
+    const voteSnaps = await submitFullClueRound(sockets, turnOrder, 2);
+    expect(voteSnaps[0].votedCount).toBe(0);
+    expect(voteSnaps[0].allVotedDeadline).toBeNull();
+    const mainDeadline = voteSnaps[0].turnDeadline as number;
+
+    const target = turnOrder[1];
+    let lastSnap: any;
+    for (const [i, playerId] of turnOrder.entries()) {
+      const next = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+      sockets[playerId].send(JSON.stringify({ type: 'SUBMIT_VOTE', targetId: target }));
+      [lastSnap] = await next;
+      expect(lastSnap.votedCount).toBe(i + 1); // live count grows one vote at a time
+    }
+
+    // Every alive player has voted: a short grace deadline is armed, well before the still-running
+    // main vote timer -- and it's what actually governs resolution, not the main timer.
+    expect(lastSnap.phase).toBe('VOTE');
+    expect(lastSnap.allVotedDeadline).toEqual(expect.any(Number));
+    expect(lastSnap.allVotedDeadline).toBeLessThan(mainDeadline);
+
+    const [resolvedSnap] = await resolveVoteTimer(stub, sockets);
+    expect(resolvedSnap.phase).toBe('ELIMINATION');
+    expect(resolvedSnap.lastEliminatedId).toBe(target);
+  });
+
+  it('retracting a vote after everyone had voted cancels the imminent early resolution', async () => {
+    const code = 'FLOW-VOTE-RETRACT';
+    const id = env.GAME_ROOM.idFromName(code);
+    const stub = env.GAME_ROOM.get(id);
+
+    const wsA = await joinPlayer(stub, code, 'Alice', 'a', true);
+    const wsB = await joinPlayer(stub, code, 'Bob', 'b', false, [wsA]);
+    const wsC = await joinPlayer(stub, code, 'Carl', 'c', false, [wsA, wsB]);
+    const sockets: Record<string, WebSocket> = { a: wsA, b: wsB, c: wsC };
+
+    const started = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+    wsA.send(
+      JSON.stringify({
+        type: 'START_GAME',
+        settings: { themes: ['anime'], similarityLevel: 'none', mrWhiteEnabled: false },
+      })
+    );
+    await started;
+
+    const afterAlarmA = waitForMessage(wsA);
+    await runDurableObjectAlarm(stub);
+    const clueRoundSnap = await afterAlarmA;
+    const turnOrder = clueRoundSnap.turnOrder as string[];
+
+    await submitFullClueRound(sockets, turnOrder, 1);
+    await submitFullClueRound(sockets, turnOrder, 2);
+
+    const target = turnOrder[1];
+    let lastSnap: any;
+    for (const playerId of turnOrder) {
+      const next = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+      sockets[playerId].send(JSON.stringify({ type: 'SUBMIT_VOTE', targetId: target }));
+      [lastSnap] = await next;
+    }
+    expect(lastSnap.allVotedDeadline).toEqual(expect.any(Number));
+
+    const afterRetract = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+    sockets[turnOrder[0]].send(JSON.stringify({ type: 'RETRACT_VOTE' }));
+    const [retractSnap] = await afterRetract;
+    expect(retractSnap.phase).toBe('VOTE');
+    expect(retractSnap.votedCount).toBe(turnOrder.length - 1);
+    expect(retractSnap.allVotedDeadline).toBeNull();
+
+    // Re-vote to complete it again, then fire whatever alarm is armed -- confirms the room is
+    // still a normal, resolvable VOTE phase after the retraction, not stuck.
+    const revote = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+    sockets[turnOrder[0]].send(JSON.stringify({ type: 'SUBMIT_VOTE', targetId: target }));
+    await revote;
+    const [resolvedSnap] = await resolveVoteTimer(stub, sockets);
+    expect(resolvedSnap.phase).toBe('ELIMINATION');
+    expect(resolvedSnap.lastEliminatedId).toBe(target);
+  });
+
+  it("changing a vote after everyone had voted resets the grace countdown", async () => {
+    const code = 'FLOW-VOTE-RESET-GRACE';
+    const id = env.GAME_ROOM.idFromName(code);
+    const stub = env.GAME_ROOM.get(id);
+
+    const wsA = await joinPlayer(stub, code, 'Alice', 'a', true);
+    const wsB = await joinPlayer(stub, code, 'Bob', 'b', false, [wsA]);
+    const wsC = await joinPlayer(stub, code, 'Carl', 'c', false, [wsA, wsB]);
+    const sockets: Record<string, WebSocket> = { a: wsA, b: wsB, c: wsC };
+
+    const started = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+    wsA.send(
+      JSON.stringify({
+        type: 'START_GAME',
+        settings: { themes: ['anime'], similarityLevel: 'none', mrWhiteEnabled: false },
+      })
+    );
+    await started;
+
+    const afterAlarmA = waitForMessage(wsA);
+    await runDurableObjectAlarm(stub);
+    const clueRoundSnap = await afterAlarmA;
+    const turnOrder = clueRoundSnap.turnOrder as string[];
+
+    await submitFullClueRound(sockets, turnOrder, 1);
+    await submitFullClueRound(sockets, turnOrder, 2);
+
+    let lastSnap: any;
+    for (const playerId of turnOrder) {
+      const next = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+      sockets[playerId].send(JSON.stringify({ type: 'SUBMIT_VOTE', targetId: turnOrder[1] }));
+      [lastSnap] = await next;
+    }
+    const firstDeadline = lastSnap.allVotedDeadline as number;
+    expect(firstDeadline).toEqual(expect.any(Number));
+
+    // Everyone had already voted -- switching a vote to a different target still counts as
+    // "everyone voted", but it must restart the 3s grace countdown rather than leaving it be.
+    const switched = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+    sockets[turnOrder[0]].send(JSON.stringify({ type: 'SUBMIT_VOTE', targetId: turnOrder[2] }));
+    const [switchedSnap] = await switched;
+    expect(switchedSnap.phase).toBe('VOTE');
+    expect(switchedSnap.votedCount).toBe(turnOrder.length);
+    expect(switchedSnap.allVotedDeadline).toEqual(expect.any(Number));
+    expect(switchedSnap.allVotedDeadline).toBeGreaterThanOrEqual(firstDeadline);
+  });
+
+  it('resolves the vote shortly after every alive player has voted when the host disables the vote timer', async () => {
+    const code = 'FLOW-VOTE-NO-TIMER';
+    const id = env.GAME_ROOM.idFromName(code);
+    const stub = env.GAME_ROOM.get(id);
+
+    const wsA = await joinPlayer(stub, code, 'Alice', 'a', true);
+    const wsB = await joinPlayer(stub, code, 'Bob', 'b', false, [wsA]);
+    const wsC = await joinPlayer(stub, code, 'Carl', 'c', false, [wsA, wsB]);
+    const sockets: Record<string, WebSocket> = { a: wsA, b: wsB, c: wsC };
+
+    const started = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+    wsA.send(
+      JSON.stringify({
+        type: 'START_GAME',
+        settings: { themes: ['anime'], similarityLevel: 'none', mrWhiteEnabled: false, voteTimerEnabled: false },
+      })
+    );
+    await started;
+
+    const afterAlarmA = waitForMessage(wsA);
+    await runDurableObjectAlarm(stub);
+    const clueRoundSnap = await afterAlarmA;
+    const turnOrder = clueRoundSnap.turnOrder as string[];
+
+    await submitFullClueRound(sockets, turnOrder, 1);
+    const voteSnaps = await submitFullClueRound(sockets, turnOrder, 2);
+    expect(voteSnaps[0].phase).toBe('VOTE');
+    expect(voteSnaps[0].turnDeadline).toBeNull(); // no timer running -- confirms voteTimerEnabled: false took effect
+
+    const target = turnOrder[1];
+    let lastSnap: any;
+    for (const playerId of turnOrder) {
+      const next = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+      sockets[playerId].send(JSON.stringify({ type: 'SUBMIT_VOTE', targetId: target }));
+      [lastSnap] = await next;
+    }
+    // No main timer running, but the last vote still only arms the ALL_VOTED_GRACE_MS grace
+    // alarm rather than resolving synchronously -- still VOTE until that alarm is fired.
+    expect(lastSnap.phase).toBe('VOTE');
+    expect(lastSnap.votedCount).toBe(turnOrder.length);
+    expect(lastSnap.allVotedDeadline).not.toBeNull();
+
+    const [resolvedSnap] = await resolveVoteTimer(stub, sockets);
+    expect(resolvedSnap.phase).toBe('ELIMINATION');
+    expect(resolvedSnap.lastEliminatedId).toBe(target);
   });
 
   it('broadcasts ELIMINATION then, after the reveal alarm, resolves an ordinary elimination into a new CLUE_ROUND', async () => {
@@ -339,15 +743,15 @@ describe('GameRoom game flow', () => {
     // Mr. White (there is none) -- either surviving role keeps the round going, since 1 civil +
     // 1 undercover always remain alive after a single elimination in a 3-player game.
     const target = turnOrder[1];
-    let eliminationSnap: any;
     for (const playerId of turnOrder) {
       const ws = sockets[playerId];
       const next = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
       ws.send(JSON.stringify({ type: 'SUBMIT_VOTE', targetId: target }));
-      const results = await next;
-      eliminationSnap = results[0];
+      await next;
     }
 
+    const voteSnaps = await resolveVoteTimer(stub, sockets);
+    const eliminationSnap = voteSnaps[0];
     expect(eliminationSnap.phase).toBe('ELIMINATION');
     expect(eliminationSnap.lastEliminatedId).toBe(target);
 
@@ -416,16 +820,15 @@ describe('GameRoom game flow', () => {
     await submitFullClueRound(sockets, turnOrder, 2);
 
     // Everyone votes to eliminate Mr. White.
-    const voteResults: any[] = [];
     for (const playerId of turnOrder) {
       const ws = sockets[playerId];
       const next = Promise.all(order.map((pid) => waitForMessage(sockets[pid])));
       ws.send(JSON.stringify({ type: 'SUBMIT_VOTE', targetId: mrWhiteId }));
-      const results = await next;
-      voteResults.push(results[0]);
+      await next;
     }
 
-    const eliminationSnap = voteResults[voteResults.length - 1];
+    const voteSnaps = await resolveVoteTimer(stub, sockets);
+    const eliminationSnap = voteSnaps[0];
     expect(eliminationSnap.phase).toBe('ELIMINATION');
     expect(eliminationSnap.lastEliminatedId).toBe(mrWhiteId);
 
@@ -500,13 +903,14 @@ describe('GameRoom game flow', () => {
     await submitFullClueRound(sockets, turnOrder, 1);
     await submitFullClueRound(sockets, turnOrder, 2);
 
-    // Everyone votes to eliminate Mr. White -- this sets the 60s Mr. White guess-window alarm.
-    let voteSnaps: any[] = [];
+    // Everyone votes to eliminate Mr. White; resolving the vote timer sets the 60s Mr. White
+    // guess-window alarm.
     for (const playerId of turnOrder) {
       const next = Promise.all(order.map((pid) => waitForMessage(sockets[pid])));
       sockets[playerId].send(JSON.stringify({ type: 'SUBMIT_VOTE', targetId: mrWhiteId }));
-      voteSnaps = await next;
+      await next;
     }
+    const voteSnaps = await resolveVoteTimer(stub, sockets);
     expect(voteSnaps[0].phase).toBe('ELIMINATION');
 
     // Mr. White answers wrong well before the 60s alarm would naturally fire -- the game
@@ -705,15 +1109,14 @@ describe('GameRoom game flow', () => {
     // Any single elimination in a 3-player, no-Mr.-White game ends it (civil win or undercover
     // parity win) -- vote for the second player in turn order to reach END deterministically.
     const target = turnOrder[1];
-    let lastSnap: any;
     for (const playerId of turnOrder) {
       const ws = sockets[playerId];
       const next = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
       ws.send(JSON.stringify({ type: 'SUBMIT_VOTE', targetId: target }));
-      const results = await next;
-      lastSnap = results[0];
+      await next;
     }
-    expect(lastSnap.phase).toBe('ELIMINATION');
+    const voteSnaps = await resolveVoteTimer(stub, sockets);
+    expect(voteSnaps[0].phase).toBe('ELIMINATION');
 
     const afterReveal = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
     await runDurableObjectAlarm(stub);
@@ -738,7 +1141,9 @@ describe('GameRoom game flow', () => {
     expect(restartSnap.players).toHaveLength(3);
     expect(restartSnap.players.every((p: any) => p.alive === true)).toBe(true);
     expect(
-      restartSnap.players.every((p: any) => p.role === null && p.character === null && p.characterImage === null)
+      restartSnap.players.every(
+        (p: any) => p.role === null && p.character === null && p.characterImage === null && p.characterSeries === null
+      )
     ).toBe(true);
   });
 
@@ -937,13 +1342,22 @@ describe('GameRoom game flow', () => {
       ['c', 'd'],
       ['d', 'c'],
     ];
-    let afterTieSnaps: any[] = [];
     for (const [voterId, targetId] of pendingVotes) {
       const next = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
       sockets[voterId].send(JSON.stringify({ type: 'SUBMIT_VOTE', targetId }));
-      afterTieSnaps = await next;
+      await next;
     }
 
+    // The tie gets its own brief ELIMINATION reveal (with reason 'tie') before the reveal alarm
+    // sends the room into the next round's THEME_SELECT.
+    const tieRevealSnaps = await resolveVoteTimer(stub, sockets);
+    for (const snap of tieRevealSnaps) {
+      expect(snap.phase).toBe('ELIMINATION');
+      expect(snap.lastEliminatedId).toBeNull();
+      expect(snap.noEliminationReason).toBe('tie');
+    }
+
+    const afterTieSnaps = await resolveVoteTimer(stub, sockets);
     for (const snap of afterTieSnaps) {
       expect(snap.phase).toBe('THEME_SELECT');
       expect(snap.themeSetterId).toEqual(expect.any(String));
@@ -1000,7 +1414,7 @@ describe('GameRoom game flow', () => {
   }
 
   it('lets Mr. White win by guessing the exact civil note', async () => {
-    const { sockets, roleById, voteSnaps, civilNote } = await startNoteRolesAndReachVote('FLOW-NOTE-MRWHITE-WIN', true);
+    const { stub, sockets, roleById, voteSnaps, civilNote } = await startNoteRolesAndReachVote('FLOW-NOTE-MRWHITE-WIN', true);
     expect(voteSnaps[0].phase).toBe('VOTE');
     const mrWhiteId = Object.keys(roleById).find((id) => roleById[id] === 'mrwhite')!;
 
@@ -1010,13 +1424,13 @@ describe('GameRoom game flow', () => {
     // tie-vote test above documents).
     const otherIds = Object.keys(sockets).filter((id) => id !== mrWhiteId);
     const voters = [...otherIds, mrWhiteId];
-    let eliminationSnaps: any[] = [];
     for (const voterId of voters) {
       const next = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
       const targetId = voterId === mrWhiteId ? otherIds[0] : mrWhiteId;
       sockets[voterId].send(JSON.stringify({ type: 'SUBMIT_VOTE', targetId }));
-      eliminationSnaps = await next;
+      await next;
     }
+    const eliminationSnaps = await resolveVoteTimer(stub, sockets);
     expect(eliminationSnaps[0].phase).toBe('ELIMINATION');
 
     const afterGuess = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
@@ -1027,19 +1441,19 @@ describe('GameRoom game flow', () => {
   });
 
   it('does not let Mr. White win by guessing the wrong note', async () => {
-    const { sockets, roleById, voteSnaps, civilNote } = await startNoteRolesAndReachVote('FLOW-NOTE-MRWHITE-LOSE', true);
+    const { stub, sockets, roleById, voteSnaps, civilNote } = await startNoteRolesAndReachVote('FLOW-NOTE-MRWHITE-LOSE', true);
     expect(voteSnaps[0].phase).toBe('VOTE');
     const mrWhiteId = Object.keys(roleById).find((id) => roleById[id] === 'mrwhite')!;
 
     const otherIds = Object.keys(sockets).filter((id) => id !== mrWhiteId);
     const voters = [...otherIds, mrWhiteId];
-    let eliminationSnaps: any[] = [];
     for (const voterId of voters) {
       const next = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
       const targetId = voterId === mrWhiteId ? otherIds[0] : mrWhiteId;
       sockets[voterId].send(JSON.stringify({ type: 'SUBMIT_VOTE', targetId }));
-      eliminationSnaps = await next;
+      await next;
     }
+    const eliminationSnaps = await resolveVoteTimer(stub, sockets);
     expect(eliminationSnaps[0].phase).toBe('ELIMINATION');
 
     // Wrong on purpose: any value in [0, 20] other than the actual civil note.
@@ -1060,13 +1474,13 @@ describe('GameRoom game flow', () => {
     // in a burst would let each socket's one-shot `waitForMessage` listener consume the first
     // interim (still-VOTE) broadcast instead of the final elimination one (same pitfall the
     // tie-vote and Mr. White tests above document).
-    let afterVoteSnaps: any[] = [];
     for (const voterId of Object.keys(sockets)) {
       const target = voterId === undercoverId ? civilId : undercoverId;
       const next = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
       sockets[voterId].send(JSON.stringify({ type: 'SUBMIT_VOTE', targetId: target }));
-      afterVoteSnaps = await next;
+      await next;
     }
+    const afterVoteSnaps = await resolveVoteTimer(stub, sockets);
     expect(afterVoteSnaps[0].phase === 'ELIMINATION' || afterVoteSnaps[0].phase === 'END').toBe(true);
 
     // Drive to END regardless of whether it took one more reveal step.
@@ -1165,13 +1579,13 @@ describe('GameRoom game flow', () => {
 
     // Vote out the undercover player: everyone votes for them except the undercover, who votes
     // for a civil -- an unambiguous majority, no tie.
-    let eliminationSnaps: any[] = [];
     for (const voterId of Object.keys(sockets)) {
       const target = voterId === undercoverId ? civilIds[0] : undercoverId;
       const next = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
       sockets[voterId].send(JSON.stringify({ type: 'SUBMIT_VOTE', targetId: target }));
-      eliminationSnaps = await next;
+      await next;
     }
+    const eliminationSnaps = await resolveVoteTimer(stub, sockets);
     expect(eliminationSnaps[0].phase).toBe('ELIMINATION');
     expect(eliminationSnaps[0].lastEliminatedId).toBe(undercoverId);
 

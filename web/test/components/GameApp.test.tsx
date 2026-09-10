@@ -21,6 +21,37 @@ describe('GameApp', () => {
     expect(screen.getByText(/connexion/i)).toBeInTheDocument();
   });
 
+  it('keeps the room code badge visible even before the room state arrives', () => {
+    vi.spyOn(socketModule, 'useGameSocket').mockReturnValue(mockSocket({ status: 'connecting' }));
+    render(<GameApp roomCode="ABCDE" pseudo="Seb" isHost={false} onLeaveRoom={() => {}} />);
+    expect(screen.getByText('ABCDE')).toBeInTheDocument();
+  });
+
+  it('keeps the room code badge visible during an in-progress phase, not just the lobby', () => {
+    window.localStorage.setItem('undercover:clientId', 'p1');
+    vi.spyOn(socketModule, 'useGameSocket').mockReturnValue(
+      mockSocket({
+        status: 'open',
+        lastMessage: {
+          type: 'ROOM_STATE',
+          phase: 'CLUE_ROUND',
+          code: 'ABCDE',
+          hostId: 'p1',
+          turnOrder: ['p1', 'p2'],
+          currentTurnIndex: 0,
+          clues: [],
+          round: 1,
+          players: [
+            { id: 'p1', name: 'Alice', alive: true, connected: true },
+            { id: 'p2', name: 'Bob', alive: true, connected: true },
+          ],
+        },
+      })
+    );
+    render(<GameApp roomCode="ABCDE" pseudo="Alice" isHost={false} onLeaveRoom={() => {}} />);
+    expect(screen.getByText('ABCDE')).toBeInTheDocument();
+  });
+
   it('sends JOIN_ROOM once the socket opens', () => {
     const send = vi.fn();
     vi.spyOn(socketModule, 'useGameSocket').mockReturnValue(mockSocket({ status: 'open', send }));
@@ -33,7 +64,7 @@ describe('GameApp', () => {
       mockSocket({ status: 'open', lastMessage: { type: 'ROOM_STATE', phase: 'LOBBY', code: 'ABCDE', players: [] } })
     );
     render(<GameApp roomCode="ABCDE" pseudo="Seb" isHost={false} onLeaveRoom={() => {}} />);
-    expect(screen.getByText(/joueurs/i)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /joueurs/i })).toBeInTheDocument();
   });
 
   it('shows the error message when an ERROR message is received', () => {
