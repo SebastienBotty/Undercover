@@ -40,4 +40,14 @@ describe('EndScreen', () => {
     expect(screen.queryByRole('button', { name: /rejouer/i })).not.toBeInTheDocument();
     expect(screen.getByText(/en attente que l'hôte relance/i)).toBeInTheDocument();
   });
+
+  it('reveals notes instead of characters when players carry a note', () => {
+    const notePlayers = [
+      { id: 'p1', name: 'Alice', role: 'civil' as const, character: null, note: 14 },
+      { id: 'p2', name: 'Bob', role: 'undercover' as const, character: null, note: 10 },
+    ];
+    render(<EndScreen winner="civil" players={notePlayers} isHost={false} onRestart={() => {}} onLeave={() => {}} />);
+    expect(screen.getByText(/14\/20/)).toBeInTheDocument();
+    expect(screen.getByText(/10\/20/)).toBeInTheDocument();
+  });
 });

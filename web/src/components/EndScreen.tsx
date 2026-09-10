@@ -7,6 +7,7 @@ interface Player {
   name: string;
   role: Role | null;
   character: string | null;
+  note?: number | null;
 }
 
 interface EndScreenProps {
@@ -33,7 +34,7 @@ export function EndScreen({ winner, players, isHost, onRestart, onLeave }: EndSc
           <li key={p.id} className="rosterItem">
             <span>{p.name}</span>
             <span className="muted">
-              {p.role} {p.character ? `(${p.character})` : ''}
+              {p.role} {p.character ? `(${p.character})` : p.note != null ? `(${p.note}/20)` : ''}
             </span>
           </li>
         ))}
