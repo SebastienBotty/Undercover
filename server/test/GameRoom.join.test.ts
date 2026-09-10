@@ -88,6 +88,108 @@ describe('GameRoom join lifecycle', () => {
     expect(snapshot.players[0].connected).toBe(true);
   });
 
+  it('hands hosting off to another connected player when the host disconnects', async () => {
+    const id = env.GAME_ROOM.idFromName('TEST-JOIN-HOST-MIGRATION');
+    const stub = env.GAME_ROOM.get(id);
+
+    const resHost = await connect(stub);
+    const wsHost = resHost.webSocket!;
+    wsHost.accept();
+    const hostJoined = waitForMessage(wsHost);
+    wsHost.send(
+      JSON.stringify({ type: 'JOIN_ROOM', code: 'TEST-JOIN-HOST-MIGRATION', name: 'Alice', clientId: 'c1', isHost: true }),
+    );
+    await hostJoined;
+
+    const resBob = await connect(stub);
+    const wsBob = resBob.webSocket!;
+    wsBob.accept();
+    const bobJoined = waitForMessage(wsBob);
+    wsBob.send(
+      JSON.stringify({ type: 'JOIN_ROOM', code: 'TEST-JOIN-HOST-MIGRATION', name: 'Bob', clientId: 'c2', isHost: false }),
+    );
+    await bobJoined;
+
+    // The host (Alice) disconnects without anyone restarting/reconfiguring the room -- if hostId
+    // never moved off her, the room would be stuck forever (only the host can act on it).
+    wsHost.close();
+
+    const resCarl = await connect(stub);
+    const wsCarl = resCarl.webSocket!;
+    wsCarl.accept();
+    const carlJoined = waitForMessage(wsCarl);
+    wsCarl.send(
+      JSON.stringify({ type: 'JOIN_ROOM', code: 'TEST-JOIN-HOST-MIGRATION', name: 'Carl', clientId: 'c3', isHost: false }),
+    );
+    const snapshot = await carlJoined;
+
+    expect(snapshot.hostId).toBe('c2');
+    // Still in LOBBY -- a disconnected player is removed outright rather than kept around
+    // "disconnected" (that treatment only kicks in once a game is actually in progress).
+    expect(snapshot.players.find((p: any) => p.id === 'c1')).toBeUndefined();
+    expect(snapshot.players).toHaveLength(2); // Bob (now host) and Carl
+  });
+
+  it('leaves hostId as-is (and keeps working) when the host disconnects with nobody else connected', async () => {
+    const id = env.GAME_ROOM.idFromName('TEST-JOIN-HOST-ALONE');
+    const stub = env.GAME_ROOM.get(id);
+
+    const resHost = await connect(stub);
+    const wsHost = resHost.webSocket!;
+    wsHost.accept();
+    const hostJoined = waitForMessage(wsHost);
+    wsHost.send(
+      JSON.stringify({ type: 'JOIN_ROOM', code: 'TEST-JOIN-HOST-ALONE', name: 'Alice', clientId: 'c1', isHost: true }),
+    );
+    await hostJoined;
+
+    wsHost.close();
+
+    const resReconnect = await connect(stub);
+    const wsReconnect = resReconnect.webSocket!;
+    wsReconnect.accept();
+    const reconnected = waitForMessage(wsReconnect);
+    wsReconnect.send(
+      JSON.stringify({ type: 'JOIN_ROOM', code: 'TEST-JOIN-HOST-ALONE', name: 'Alice', clientId: 'c1', isHost: false }),
+    );
+    const snapshot = await reconnected;
+
+    expect(snapshot.hostId).toBe('c1');
+    expect(snapshot.players).toHaveLength(1);
+  });
+
+  it('removes a non-host player outright (not just marked disconnected) when they disconnect in the LOBBY', async () => {
+    const id = env.GAME_ROOM.idFromName('TEST-JOIN-LOBBY-DISCONNECT');
+    const stub = env.GAME_ROOM.get(id);
+
+    const resHost = await connect(stub);
+    const wsHost = resHost.webSocket!;
+    wsHost.accept();
+    const hostJoined = waitForMessage(wsHost);
+    wsHost.send(
+      JSON.stringify({ type: 'JOIN_ROOM', code: 'TEST-JOIN-LOBBY-DISCONNECT', name: 'Alice', clientId: 'c1', isHost: true }),
+    );
+    await hostJoined;
+
+    const resBob = await connect(stub);
+    const wsBob = resBob.webSocket!;
+    wsBob.accept();
+    // Bob joining also broadcasts to the already-connected host -- drain that on wsHost too, or
+    // it would be the (stale) message the disconnect listener below picks up instead.
+    const bobJoined = Promise.all([waitForMessage(wsBob), waitForMessage(wsHost)]);
+    wsBob.send(
+      JSON.stringify({ type: 'JOIN_ROOM', code: 'TEST-JOIN-LOBBY-DISCONNECT', name: 'Bob', clientId: 'c2', isHost: false }),
+    );
+    await bobJoined;
+
+    const afterDisconnect = waitForMessage(wsHost);
+    wsBob.close();
+    const snapshot = await afterDisconnect;
+
+    expect(snapshot.players).toHaveLength(1);
+    expect(snapshot.players.find((p: any) => p.id === 'c2')).toBeUndefined();
+  });
+
   it('rejects a reconnect that renames to a name already held by a different connected player', async () => {
     const id = env.GAME_ROOM.idFromName('TEST-JOIN-RENAME-COLLISION');
     const stub = env.GAME_ROOM.get(id);

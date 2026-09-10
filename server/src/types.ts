@@ -90,4 +90,8 @@ export interface RoomState {
   currentTheme: string | null;
   /** History of every theme submitted so far, one per round ('note' mode only). */
   themes: ThemeEntry[];
+  /** Client ids permanently rejected on any future JOIN_ROOM attempt (host kick or the player's
+   * own explicit LEAVE_ROOM), including across a RESTART_GAME back to LOBBY. A player who merely
+   * loses connection (closed tab, dropped network) is NOT added here -- they can always rejoin. */
+  bannedClientIds: string[];
 }

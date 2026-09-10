@@ -191,6 +191,97 @@ describe('GameRoom game flow', () => {
     expect(error).toMatchObject({ type: 'ERROR', code: 'NOT_YOUR_TURN' });
   });
 
+  it('passes a player\'s clue turn immediately when they disconnect mid-turn, instead of eliminating them', async () => {
+    const code = 'FLOW-DISCONNECT-CURRENT-TURN';
+    const id = env.GAME_ROOM.idFromName(code);
+    const stub = env.GAME_ROOM.get(id);
+
+    const wsA = await joinPlayer(stub, code, 'Alice', 'a', true);
+    const wsB = await joinPlayer(stub, code, 'Bob', 'b', false, [wsA]);
+    const wsC = await joinPlayer(stub, code, 'Carl', 'c', false, [wsA, wsB]);
+    const sockets: Record<string, WebSocket> = { a: wsA, b: wsB, c: wsC };
+
+    const started = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+    wsA.send(
+      JSON.stringify({
+        type: 'START_GAME',
+        settings: { themes: ['anime'], similarityLevel: 'none', mrWhiteEnabled: false },
+      })
+    );
+    await started;
+
+    const afterAlarmA = waitForMessage(wsA);
+    await runDurableObjectAlarm(stub);
+    const clueRoundSnap = await afterAlarmA;
+    const turnOrder = clueRoundSnap.turnOrder as string[];
+    const currentPlayerId = turnOrder[clueRoundSnap.currentTurnIndex];
+    const others = Object.values(sockets).filter((s) => s !== sockets[currentPlayerId]);
+
+    const afterClose = Promise.all(others.map((s) => waitForMessage(s)));
+    sockets[currentPlayerId].close();
+    const [snapshot] = await afterClose;
+
+    expect(snapshot.phase).toBe('CLUE_ROUND');
+    const skippedPlayer = snapshot.players.find((p: any) => p.id === currentPlayerId);
+    expect(skippedPlayer.connected).toBe(false);
+    expect(skippedPlayer.alive).toBe(true); // passed, not eliminated
+    expect(snapshot.turnOrder[snapshot.currentTurnIndex]).not.toBe(currentPlayerId);
+    const recordedClue = snapshot.clues.find(
+      (c: any) => c.playerId === currentPlayerId && c.round === clueRoundSnap.round
+    );
+    expect(recordedClue?.text).toBe('');
+  });
+
+  it('skips a disconnected player\'s upcoming turn the moment the rotation reaches it, without waiting for the timer', async () => {
+    const code = 'FLOW-DISCONNECT-UPCOMING-TURN';
+    const id = env.GAME_ROOM.idFromName(code);
+    const stub = env.GAME_ROOM.get(id);
+
+    const wsA = await joinPlayer(stub, code, 'Alice', 'a', true);
+    const wsB = await joinPlayer(stub, code, 'Bob', 'b', false, [wsA]);
+    const wsC = await joinPlayer(stub, code, 'Carl', 'c', false, [wsA, wsB]);
+    const sockets: Record<string, WebSocket> = { a: wsA, b: wsB, c: wsC };
+
+    const started = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+    wsA.send(
+      JSON.stringify({
+        type: 'START_GAME',
+        settings: { themes: ['anime'], similarityLevel: 'none', mrWhiteEnabled: false },
+      })
+    );
+    await started;
+
+    const afterAlarmA = waitForMessage(wsA);
+    await runDurableObjectAlarm(stub);
+    const clueRoundSnap = await afterAlarmA;
+    const turnOrder = clueRoundSnap.turnOrder as string[];
+    const currentPlayerId = turnOrder[clueRoundSnap.currentTurnIndex];
+    const nextPlayerId = turnOrder[(clueRoundSnap.currentTurnIndex + 1) % turnOrder.length];
+    const thirdPlayerId = turnOrder.find((pid) => pid !== currentPlayerId && pid !== nextPlayerId)!;
+
+    // The *next* player in line disconnects while it's still someone else's turn -- not their
+    // turn yet, so nothing about the rotation should react immediately.
+    const othersOfDrop = Object.values(sockets).filter((s) => s !== sockets[nextPlayerId]);
+    const afterDrop = Promise.all(othersOfDrop.map((s) => waitForMessage(s)));
+    sockets[nextPlayerId].close();
+    await afterDrop;
+
+    // The current player submits their clue -- the rotation should skip straight past the
+    // disconnected player onto the third one, recording an empty clue for the one skipped.
+    const remaining = Object.values(sockets).filter((s) => s !== sockets[nextPlayerId]);
+    const afterClue = Promise.all(remaining.map((s) => waitForMessage(s)));
+    sockets[currentPlayerId].send(JSON.stringify({ type: 'SUBMIT_CLUE', text: 'hello' }));
+    const [snapshot] = await afterClue;
+
+    expect(snapshot.turnOrder[snapshot.currentTurnIndex]).toBe(thirdPlayerId);
+    const skippedClue = snapshot.clues.find(
+      (c: any) => c.playerId === nextPlayerId && c.round === clueRoundSnap.round
+    );
+    expect(skippedClue?.text).toBe('');
+    const skippedPlayer = snapshot.players.find((p: any) => p.id === nextPlayerId);
+    expect(skippedPlayer.alive).toBe(true);
+  });
+
   it('rejects START_GAME with Mr. White enabled when there are fewer than 5 players', async () => {
     const code = 'FLOW-3';
     const id = env.GAME_ROOM.idFromName(code);
@@ -1186,6 +1277,42 @@ describe('GameRoom game flow', () => {
     }
   });
 
+  it('prefers a connected player when picking the note-mode theme-setter, skipping disconnected ones', async () => {
+    const code = 'FLOW-NOTE-THEME-DISCONNECTED-SETTER';
+    const id = env.GAME_ROOM.idFromName(code);
+    const stub = env.GAME_ROOM.get(id);
+
+    const wsA = await joinPlayer(stub, code, 'Alice', 'a', true);
+    const wsB = await joinPlayer(stub, code, 'Bob', 'b', false, [wsA]);
+    const wsC = await joinPlayer(stub, code, 'Carl', 'c', false, [wsA, wsB]);
+    const sockets: Record<string, WebSocket> = { a: wsA, b: wsB, c: wsC };
+
+    const started = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+    wsA.send(
+      JSON.stringify({
+        type: 'START_GAME',
+        settings: { themes: [], similarityLevel: 'none', mrWhiteEnabled: false, mode: 'note' },
+      })
+    );
+    await started;
+
+    // Bob and Carl disconnect before the ROLE_REVEAL alarm even fires -- only Alice is left
+    // connected, so she must be the one picked as theme-setter even though the pick is random.
+    const afterDropB = waitForMessage(wsA);
+    wsB.close();
+    await afterDropB;
+    const afterDropC = waitForMessage(wsA);
+    wsC.close();
+    await afterDropC;
+
+    const afterAlarmA = waitForMessage(wsA);
+    await runDurableObjectAlarm(stub);
+    const themeSelectSnap = await afterAlarmA;
+
+    expect(themeSelectSnap.phase).toBe('THEME_SELECT');
+    expect(themeSelectSnap.themeSetterId).toBe('a');
+  });
+
   it('rejects SUBMIT_THEME from anyone other than the designated theme-setter', async () => {
     const code = 'FLOW-NOTE-THEME-WRONG-PLAYER';
     const id = env.GAME_ROOM.idFromName(code);
@@ -1686,5 +1813,376 @@ describe('GameRoom game flow', () => {
     );
     const error = await errorPromise;
     expect(error).toMatchObject({ type: 'ERROR', code: 'WRONG_PHASE' });
+  });
+
+  it('rejects KICK_PLAYER from a non-host', async () => {
+    const code = 'FLOW-KICK-NOT-HOST';
+    const id = env.GAME_ROOM.idFromName(code);
+    const stub = env.GAME_ROOM.get(id);
+
+    const wsA = await joinPlayer(stub, code, 'Alice', 'a', true);
+    const wsB = await joinPlayer(stub, code, 'Bob', 'b', false, [wsA]);
+
+    const errorPromise = waitForMessage(wsB);
+    wsB.send(JSON.stringify({ type: 'KICK_PLAYER', playerId: 'a' }));
+    const error = await errorPromise;
+    expect(error).toMatchObject({ type: 'ERROR', code: 'NOT_HOST' });
+  });
+
+  it('rejects the host trying to kick themselves', async () => {
+    const code = 'FLOW-KICK-SELF';
+    const id = env.GAME_ROOM.idFromName(code);
+    const stub = env.GAME_ROOM.get(id);
+
+    const wsA = await joinPlayer(stub, code, 'Alice', 'a', true);
+    await joinPlayer(stub, code, 'Bob', 'b', false, [wsA]);
+
+    const errorPromise = waitForMessage(wsA);
+    wsA.send(JSON.stringify({ type: 'KICK_PLAYER', playerId: 'a' }));
+    const error = await errorPromise;
+    expect(error).toMatchObject({ type: 'ERROR', code: 'CANNOT_KICK_SELF' });
+  });
+
+  it('rejects KICK_PLAYER for a player id that is not in the room', async () => {
+    const code = 'FLOW-KICK-NOT-FOUND';
+    const id = env.GAME_ROOM.idFromName(code);
+    const stub = env.GAME_ROOM.get(id);
+
+    const wsA = await joinPlayer(stub, code, 'Alice', 'a', true);
+
+    const errorPromise = waitForMessage(wsA);
+    wsA.send(JSON.stringify({ type: 'KICK_PLAYER', playerId: 'ghost' }));
+    const error = await errorPromise;
+    expect(error).toMatchObject({ type: 'ERROR', code: 'PLAYER_NOT_FOUND' });
+  });
+
+  it('lets the host kick a player from the lobby, and permanently blocks them from rejoining the room', async () => {
+    const code = 'FLOW-KICK-LOBBY';
+    const id = env.GAME_ROOM.idFromName(code);
+    const stub = env.GAME_ROOM.get(id);
+
+    const wsA = await joinPlayer(stub, code, 'Alice', 'a', true);
+    const wsB = await joinPlayer(stub, code, 'Bob', 'b', false, [wsA]);
+
+    // Bob first receives the final ROOM_STATE broadcast (his own row already gone), then the
+    // dedicated KICKED notice right before his socket is closed.
+    const bobFinalBroadcast = waitForMessage(wsB);
+    const hostBroadcast = waitForMessage(wsA);
+    wsA.send(JSON.stringify({ type: 'KICK_PLAYER', playerId: 'b' }));
+    const [, snapA] = await Promise.all([bobFinalBroadcast, hostBroadcast]);
+    const notice = await waitForMessage(wsB);
+
+    expect(notice).toMatchObject({ type: 'ERROR', code: 'KICKED' });
+    expect(snapA.players.find((p: any) => p.id === 'b')).toBeUndefined();
+
+    // A fresh connection attempting to rejoin with the same (kicked) clientId must be rejected,
+    // even though the room is still in LOBBY and would otherwise happily let a new player in.
+    const res = await connect(stub);
+    const rejoinWs = res.webSocket!;
+    rejoinWs.accept();
+    const rejoinError = waitForMessage(rejoinWs);
+    rejoinWs.send(JSON.stringify({ type: 'JOIN_ROOM', code, name: 'Bob', clientId: 'b', isHost: false }));
+    expect(await rejoinError).toMatchObject({ type: 'ERROR', code: 'BANNED' });
+  });
+
+  it('kicking the current clue-turn holder passes their turn to the next alive player immediately', async () => {
+    const code = 'FLOW-KICK-CLUE-TURN';
+    const id = env.GAME_ROOM.idFromName(code);
+    const stub = env.GAME_ROOM.get(id);
+
+    // 5 players (no Mr. White) so the lone Undercover kicked out isn't what's under test here --
+    // that's covered by the dedicated win-condition test below. Kicking a civil instead leaves
+    // 3 civils + 1 Undercover alive, which checkWinCondition doesn't decide either way.
+    const wsA = await joinPlayer(stub, code, 'Alice', 'a', true);
+    const wsB = await joinPlayer(stub, code, 'Bob', 'b', false, [wsA]);
+    const wsC = await joinPlayer(stub, code, 'Carl', 'c', false, [wsA, wsB]);
+    const wsD = await joinPlayer(stub, code, 'Dora', 'd', false, [wsA, wsB, wsC]);
+    const wsE = await joinPlayer(stub, code, 'Eve', 'e', false, [wsA, wsB, wsC, wsD]);
+    const sockets: Record<string, WebSocket> = { a: wsA, b: wsB, c: wsC, d: wsD, e: wsE };
+
+    const started = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+    wsA.send(
+      JSON.stringify({
+        type: 'START_GAME',
+        settings: { themes: ['anime'], similarityLevel: 'none', mrWhiteEnabled: false },
+      })
+    );
+    const selfSnaps = await started;
+    const selfSnapsById: Record<string, any> = Object.fromEntries(Object.keys(sockets).map((pid, i) => [pid, selfSnaps[i]]));
+    const undercoverId = Object.keys(sockets).find(
+      (playerId) => selfSnapsById[playerId].players.find((p: any) => p.id === playerId).role === 'undercover'
+    )!;
+
+    const afterAlarmA = waitForMessage(wsA);
+    await runDurableObjectAlarm(stub);
+    const clueRoundSnap = await afterAlarmA;
+
+    // The host can't kick themselves and kicking the Undercover would end the game outright (see
+    // the win-condition test) -- if turn order lands on either, advance past them first so a
+    // non-host civil ends up holding the turn we actually kick.
+    let currentId = clueRoundSnap.turnOrder[clueRoundSnap.currentTurnIndex];
+    for (let guard = 0; guard < 5 && (currentId === 'a' || currentId === undercoverId); guard++) {
+      const next = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+      sockets[currentId].send(JSON.stringify({ type: 'SUBMIT_CLUE', text: `clue-from-${currentId}` }));
+      const [afterClueSnap] = await next;
+      currentId = afterClueSnap.turnOrder[afterClueSnap.currentTurnIndex];
+    }
+
+    const afterKick = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+    wsA.send(JSON.stringify({ type: 'KICK_PLAYER', playerId: currentId }));
+    const [kickSnap] = await afterKick;
+
+    expect(kickSnap.phase).toBe('CLUE_ROUND');
+    const kickedPlayer = kickSnap.players.find((p: any) => p.id === currentId);
+    expect(kickedPlayer.alive).toBe(false);
+    expect(kickedPlayer.connected).toBe(false);
+    const newCurrentId = kickSnap.turnOrder[kickSnap.currentTurnIndex];
+    expect(newCurrentId).not.toBe(currentId);
+  });
+
+  it('kicking the sole Undercover immediately ends the game with a civil win', async () => {
+    const code = 'FLOW-KICK-WIN';
+    const id = env.GAME_ROOM.idFromName(code);
+    const stub = env.GAME_ROOM.get(id);
+
+    const wsA = await joinPlayer(stub, code, 'Alice', 'a', true);
+    const wsB = await joinPlayer(stub, code, 'Bob', 'b', false, [wsA]);
+    const wsC = await joinPlayer(stub, code, 'Carl', 'c', false, [wsA, wsB]);
+    const sockets: Record<string, WebSocket> = { a: wsA, b: wsB, c: wsC };
+
+    const started = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+    wsA.send(
+      JSON.stringify({
+        type: 'START_GAME',
+        settings: { themes: ['anime'], similarityLevel: 'none', mrWhiteEnabled: false },
+      })
+    );
+    // Each player's own role is revealed in the snapshot sent to their own socket as soon as
+    // START_GAME broadcasts, regardless of phase -- no need to wait for the round to progress.
+    const [snapA, snapB, snapC] = await started;
+    const selfSnapsById: Record<string, any> = { a: snapA, b: snapB, c: snapC };
+    const undercoverId = Object.keys(sockets).find(
+      (playerId) => selfSnapsById[playerId].players.find((p: any) => p.id === playerId).role === 'undercover'
+    )!;
+
+    const afterKick = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+    wsA.send(JSON.stringify({ type: 'KICK_PLAYER', playerId: undercoverId }));
+    const [kickSnap] = await afterKick;
+
+    expect(kickSnap.phase).toBe('END');
+    expect(kickSnap.winner).toBe('civil');
+  });
+
+  it('kicking a non-voter during VOTE recomputes the deadline, arming the grace period if the remaining alive players had already all voted', async () => {
+    const code = 'FLOW-KICK-VOTE';
+    const id = env.GAME_ROOM.idFromName(code);
+    const stub = env.GAME_ROOM.get(id);
+
+    // 5 players (no Mr. White) so kicking a civil non-voter leaves 3 civils + 1 Undercover
+    // alive -- checkWinCondition stays undecided, isolating the deadline-recompute behavior
+    // under test from the win-condition path (covered separately above).
+    const wsA = await joinPlayer(stub, code, 'Alice', 'a', true);
+    const wsB = await joinPlayer(stub, code, 'Bob', 'b', false, [wsA]);
+    const wsC = await joinPlayer(stub, code, 'Carl', 'c', false, [wsA, wsB]);
+    const wsD = await joinPlayer(stub, code, 'Dora', 'd', false, [wsA, wsB, wsC]);
+    const wsE = await joinPlayer(stub, code, 'Eve', 'e', false, [wsA, wsB, wsC, wsD]);
+    const sockets: Record<string, WebSocket> = { a: wsA, b: wsB, c: wsC, d: wsD, e: wsE };
+
+    const started = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+    wsA.send(
+      JSON.stringify({
+        type: 'START_GAME',
+        settings: { themes: ['anime'], similarityLevel: 'none', mrWhiteEnabled: false },
+      })
+    );
+    const selfSnaps = await started;
+    const selfSnapsById: Record<string, any> = Object.fromEntries(Object.keys(sockets).map((pid, i) => [pid, selfSnaps[i]]));
+    const undercoverId = Object.keys(sockets).find(
+      (playerId) => selfSnapsById[playerId].players.find((p: any) => p.id === playerId).role === 'undercover'
+    )!;
+    // A non-host civil, guaranteed to exist: only one of the 5 players is the Undercover, so at
+    // least 3 of the 4 non-host players are civil.
+    const nonVoterId = Object.keys(sockets).find((playerId) => playerId !== 'a' && playerId !== undercoverId)!;
+
+    const afterAlarmA = waitForMessage(wsA);
+    await runDurableObjectAlarm(stub);
+    const clueRoundSnap = await afterAlarmA;
+    const turnOrder = clueRoundSnap.turnOrder as string[];
+
+    await submitFullClueRound(sockets, turnOrder, 1);
+    const voteSnaps = await submitFullClueRound(sockets, turnOrder, 2);
+    expect(voteSnaps[0].phase).toBe('VOTE');
+
+    // Everyone except nonVoterId votes (all for 'a', a harmless target) -- nonVoterId never acts
+    // and then gets kicked, at which point the remaining alive players turn out to have already
+    // all voted.
+    for (const voterId of Object.keys(sockets)) {
+      if (voterId === nonVoterId) continue;
+      const next = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+      sockets[voterId].send(JSON.stringify({ type: 'SUBMIT_VOTE', targetId: 'a' }));
+      await next;
+    }
+
+    const afterKick = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+    wsA.send(JSON.stringify({ type: 'KICK_PLAYER', playerId: nonVoterId }));
+    const [kickSnap] = await afterKick;
+
+    expect(kickSnap.phase).toBe('VOTE');
+    expect(kickSnap.allVotedDeadline).toEqual(expect.any(Number));
+  });
+
+  it('lets a vote actually eliminate someone using only the connected players once others have disconnected mid-game', async () => {
+    // Regression test: disconnected-but-not-eliminated players used to still count toward the
+    // majority denominator, so once enough players dropped out mid-game a majority became
+    // mathematically unreachable and every vote resolved as "no majority" forever, looping the
+    // game through endless clue rounds with nobody ever getting eliminated.
+    const code = 'FLOW-VOTE-GHOST-PLAYERS';
+    const id = env.GAME_ROOM.idFromName(code);
+    const stub = env.GAME_ROOM.get(id);
+
+    const wsA = await joinPlayer(stub, code, 'Alice', 'a', true);
+    const wsB = await joinPlayer(stub, code, 'Bob', 'b', false, [wsA]);
+    const wsC = await joinPlayer(stub, code, 'Carl', 'c', false, [wsA, wsB]);
+    const wsD = await joinPlayer(stub, code, 'Dora', 'd', false, [wsA, wsB, wsC]);
+    const sockets: Record<string, WebSocket> = { a: wsA, b: wsB, c: wsC, d: wsD };
+
+    const started = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+    wsA.send(
+      JSON.stringify({
+        type: 'START_GAME',
+        settings: { themes: ['anime'], similarityLevel: 'none', mrWhiteEnabled: false },
+      })
+    );
+    await started;
+
+    const afterAlarmA = waitForMessage(wsA);
+    await runDurableObjectAlarm(stub);
+    const clueRoundSnap = await afterAlarmA;
+    const turnOrder = clueRoundSnap.turnOrder as string[];
+
+    await submitFullClueRound(sockets, turnOrder, 1);
+    const voteSnaps = await submitFullClueRound(sockets, turnOrder, 2);
+    expect(voteSnaps[0].phase).toBe('VOTE');
+
+    // Carl and Dora disconnect mid-vote -- only Alice and Bob remain connected.
+    const afterCloseC = Promise.all([waitForMessage(wsA), waitForMessage(wsB), waitForMessage(wsD)]);
+    wsC.close();
+    await afterCloseC;
+    const afterCloseD = Promise.all([waitForMessage(wsA), waitForMessage(wsB)]);
+    wsD.close();
+    await afterCloseD;
+
+    // Alice and Bob both vote for Carl -- with only 2 connected alive players, 2/2 is a full
+    // majority, even though Carl and Dora are still nominally "alive" (never eliminated, just
+    // disconnected).
+    for (const voterId of ['a', 'b']) {
+      const next = Promise.all([waitForMessage(wsA), waitForMessage(wsB)]);
+      sockets[voterId].send(JSON.stringify({ type: 'SUBMIT_VOTE', targetId: 'c' }));
+      await next;
+    }
+
+    const afterGrace = Promise.all([waitForMessage(wsA), waitForMessage(wsB)]);
+    await runDurableObjectAlarm(stub);
+    const [resolvedSnap] = await afterGrace;
+
+    expect(resolvedSnap.phase).toBe('ELIMINATION');
+    expect(resolvedSnap.lastEliminatedId).toBe('c');
+  });
+
+  it('bans a player who explicitly LEAVE_ROOMs from the lobby, unlike a player who just disconnects', async () => {
+    const code = 'FLOW-LEAVE-LOBBY';
+    const id = env.GAME_ROOM.idFromName(code);
+    const stub = env.GAME_ROOM.get(id);
+
+    const wsA = await joinPlayer(stub, code, 'Alice', 'a', true);
+    const wsB = await joinPlayer(stub, code, 'Bob', 'b', false, [wsA]);
+
+    const afterLeave = waitForMessage(wsA);
+    wsB.send(JSON.stringify({ type: 'LEAVE_ROOM' }));
+    wsB.close();
+    const snapAfterLeave = await afterLeave;
+    expect(snapAfterLeave.players.find((p: any) => p.id === 'b')).toBeUndefined();
+
+    // Unlike a plain disconnect, a fresh connection with the same clientId is rejected outright.
+    const res = await connect(stub);
+    const rejoinWs = res.webSocket!;
+    rejoinWs.accept();
+    const rejoinError = waitForMessage(rejoinWs);
+    rejoinWs.send(JSON.stringify({ type: 'JOIN_ROOM', code, name: 'Bob', clientId: 'b', isHost: false }));
+    expect(await rejoinError).toMatchObject({ type: 'ERROR', code: 'BANNED' });
+  });
+
+  it('bans a player who explicitly LEAVE_ROOMs mid-game, but still lets them be voted out normally first', async () => {
+    const code = 'FLOW-LEAVE-MIDGAME';
+    const id = env.GAME_ROOM.idFromName(code);
+    const stub = env.GAME_ROOM.get(id);
+
+    const wsA = await joinPlayer(stub, code, 'Alice', 'a', true);
+    const wsB = await joinPlayer(stub, code, 'Bob', 'b', false, [wsA]);
+    const wsC = await joinPlayer(stub, code, 'Carl', 'c', false, [wsA, wsB]);
+    const sockets: Record<string, WebSocket> = { a: wsA, b: wsB, c: wsC };
+
+    const started = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+    wsA.send(
+      JSON.stringify({
+        type: 'START_GAME',
+        settings: { themes: ['anime'], similarityLevel: 'none', mrWhiteEnabled: false },
+      })
+    );
+    await started;
+
+    const afterLeave = Promise.all([waitForMessage(wsA), waitForMessage(wsC)]);
+    wsB.send(JSON.stringify({ type: 'LEAVE_ROOM' }));
+    wsB.close();
+    const [snapAfterLeave] = await afterLeave;
+
+    // Mid-game a voluntary leave behaves exactly like a disconnect (marked disconnected, still
+    // "alive" and normally votable) -- the ban is the only thing LEAVE_ROOM adds.
+    const bob = snapAfterLeave.players.find((p: any) => p.id === 'b');
+    expect(bob.connected).toBe(false);
+    expect(bob.alive).toBe(true);
+
+    const res = await connect(stub);
+    const rejoinWs = res.webSocket!;
+    rejoinWs.accept();
+    const rejoinError = waitForMessage(rejoinWs);
+    rejoinWs.send(JSON.stringify({ type: 'JOIN_ROOM', code, name: 'Bob', clientId: 'b', isHost: false }));
+    expect(await rejoinError).toMatchObject({ type: 'ERROR', code: 'BANNED' });
+  });
+
+  it('lets a player who merely disconnects mid-game (no LEAVE_ROOM) reconnect back into the same seat', async () => {
+    const code = 'FLOW-DISCONNECT-RECONNECT';
+    const id = env.GAME_ROOM.idFromName(code);
+    const stub = env.GAME_ROOM.get(id);
+
+    const wsA = await joinPlayer(stub, code, 'Alice', 'a', true);
+    const wsB = await joinPlayer(stub, code, 'Bob', 'b', false, [wsA]);
+    const wsC = await joinPlayer(stub, code, 'Carl', 'c', false, [wsA, wsB]);
+    const sockets: Record<string, WebSocket> = { a: wsA, b: wsB, c: wsC };
+
+    const started = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+    wsA.send(
+      JSON.stringify({
+        type: 'START_GAME',
+        settings: { themes: ['anime'], similarityLevel: 'none', mrWhiteEnabled: false },
+      })
+    );
+    await started;
+
+    // No LEAVE_ROOM sent -- just an ordinary connection drop.
+    const afterDisconnect = Promise.all([waitForMessage(wsA), waitForMessage(wsC)]);
+    wsB.close();
+    await afterDisconnect;
+
+    const res = await connect(stub);
+    const rejoinWs = res.webSocket!;
+    rejoinWs.accept();
+    const rejoinResult = waitForMessage(rejoinWs);
+    rejoinWs.send(JSON.stringify({ type: 'JOIN_ROOM', code, name: 'Bob', clientId: 'b', isHost: false }));
+    const snapshot = await rejoinResult;
+
+    expect(snapshot.type).toBe('ROOM_STATE');
+    const bob = snapshot.players.find((p: any) => p.id === 'b');
+    expect(bob.connected).toBe(true);
   });
 });

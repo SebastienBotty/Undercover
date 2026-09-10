@@ -26,6 +26,7 @@ function makeRoom(overrides: Partial<RoomState> = {}): RoomState {
     themeSetterId: null,
     currentTheme: null,
     themes: [],
+    bannedClientIds: [],
     ...overrides,
   };
 }

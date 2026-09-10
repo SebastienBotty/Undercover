@@ -9,7 +9,9 @@ export type ClientMessage =
   | { type: 'SUBMIT_VOTE'; targetId: string | null }
   | { type: 'RETRACT_VOTE' }
   | { type: 'MR_WHITE_GUESS'; guess: string }
-  | { type: 'RESTART_GAME' };
+  | { type: 'RESTART_GAME' }
+  | { type: 'KICK_PLAYER'; playerId: string }
+  | { type: 'LEAVE_ROOM' };
 
 export interface ErrorMessage {
   type: 'ERROR';
