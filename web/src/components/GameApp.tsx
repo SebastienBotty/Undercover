@@ -4,6 +4,7 @@ import { useGameSocket } from '@/lib/useGameSocket';
 import { getOrCreateClientId } from '@/lib/clientId';
 import { LobbyScreen } from '@/components/LobbyScreen';
 import { RoleRevealScreen } from '@/components/RoleRevealScreen';
+import { ThemeSelectScreen } from '@/components/ThemeSelectScreen';
 import { ClueRoundScreen } from '@/components/ClueRoundScreen';
 import { VoteScreen } from '@/components/VoteScreen';
 import { EliminationScreen } from '@/components/EliminationScreen';
@@ -11,7 +12,7 @@ import { EndScreen } from '@/components/EndScreen';
 import { RoleBanner } from '@/components/RoleBanner';
 import { getStoredHostSettings, storeHostSettings, type RoomSettings } from '@/lib/hostSettings';
 
-const PHASES_WITH_ROLE_BANNER = ['CLUE_ROUND', 'VOTE', 'ELIMINATION'];
+const PHASES_WITH_ROLE_BANNER = ['THEME_SELECT', 'CLUE_ROUND', 'VOTE', 'ELIMINATION'];
 
 interface GameAppProps {
   roomCode: string;
@@ -91,6 +92,22 @@ export function GameApp({ roomCode, pseudo, isHost, onLeaveRoom }: GameAppProps)
           role={me?.role ?? null}
           character={me?.character ?? null}
           characterImage={me?.characterImage ?? null}
+          note={me?.note ?? null}
+        />
+      );
+    }
+    if (roomState.phase === 'THEME_SELECT') {
+      return (
+        <ThemeSelectScreen
+          players={roomState.players}
+          turnOrder={roomState.turnOrder}
+          clues={roomState.clues}
+          themes={roomState.themes}
+          round={roomState.round}
+          themeSetterId={roomState.themeSetterId}
+          turnDeadline={roomState.turnDeadline}
+          selfId={getOrCreateClientId()}
+          onSubmitTheme={(text) => send({ type: 'SUBMIT_THEME', text })}
         />
       );
     }
@@ -103,6 +120,7 @@ export function GameApp({ roomCode, pseudo, isHost, onLeaveRoom }: GameAppProps)
           clues={roomState.clues}
           round={roomState.round}
           turnDeadline={roomState.turnDeadline}
+          themes={roomState.themes}
           selfId={getOrCreateClientId()}
           onSubmitClue={(text) => send({ type: 'SUBMIT_CLUE', text })}
         />
@@ -115,6 +133,7 @@ export function GameApp({ roomCode, pseudo, isHost, onLeaveRoom }: GameAppProps)
           turnOrder={roomState.turnOrder}
           clues={roomState.clues}
           round={roomState.round}
+          themes={roomState.themes}
           selfId={getOrCreateClientId()}
           onVote={(targetId) => send({ type: 'SUBMIT_VOTE', targetId })}
         />
@@ -126,6 +145,7 @@ export function GameApp({ roomCode, pseudo, isHost, onLeaveRoom }: GameAppProps)
           players={roomState.players}
           lastEliminatedId={roomState.lastEliminatedId}
           selfId={getOrCreateClientId()}
+          mode={roomState.settings?.mode}
           onMrWhiteGuess={(guess) => send({ type: 'MR_WHITE_GUESS', guess })}
         />
       );
@@ -157,6 +177,7 @@ export function GameApp({ roomCode, pseudo, isHost, onLeaveRoom }: GameAppProps)
             role={me?.role ?? null}
             character={me?.character ?? null}
             characterImage={me?.characterImage ?? null}
+            note={me?.note ?? null}
           />
         )}
         {renderPhase()}

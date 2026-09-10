@@ -5,6 +5,7 @@ import styles from './ClueRoundScreen.module.css';
 
 interface Player { id: string; name: string; }
 interface Clue { playerId: string; round: number; text: string; }
+interface ThemeEntry { round: number; text: string; }
 
 interface ClueRoundScreenProps {
   players: Player[];
@@ -13,13 +14,14 @@ interface ClueRoundScreenProps {
   clues: Clue[];
   round: number;
   turnDeadline?: number | null;
+  themes?: ThemeEntry[];
   selfId: string;
   onSubmitClue: (text: string) => void;
 }
 
 const URGENT_THRESHOLD_SECONDS = 10;
 
-export function ClueRoundScreen({ players, turnOrder, currentTurnIndex, clues, round, turnDeadline, selfId, onSubmitClue }: ClueRoundScreenProps) {
+export function ClueRoundScreen({ players, turnOrder, currentTurnIndex, clues, round, turnDeadline, themes, selfId, onSubmitClue }: ClueRoundScreenProps) {
   const [draft, setDraft] = useState('');
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
   const currentPlayerId = turnOrder[currentTurnIndex];
@@ -54,6 +56,7 @@ export function ClueRoundScreen({ players, turnOrder, currentTurnIndex, clues, r
         clues={clues}
         totalRounds={round}
         currentTurnPlayerId={currentPlayerId}
+        themes={themes}
       />
       {isMyTurn ? (
         <form className="field" onSubmit={(e) => { e.preventDefault(); onSubmitClue(draft); setDraft(''); }}>

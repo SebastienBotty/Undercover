@@ -14,16 +14,19 @@ interface Clue {
   text: string;
 }
 
+interface ThemeEntry { round: number; text: string; }
+
 interface VoteScreenProps {
   players: Player[];
   turnOrder: string[];
   clues: Clue[];
   round: number;
+  themes?: ThemeEntry[];
   selfId: string;
   onVote: (targetId: string) => void;
 }
 
-export function VoteScreen({ players, turnOrder, clues, round, selfId, onVote }: VoteScreenProps) {
+export function VoteScreen({ players, turnOrder, clues, round, themes, selfId, onVote }: VoteScreenProps) {
   const [votedForId, setVotedForId] = useState<string | null>(null);
   const votableIds = new Set(players.filter((p) => p.alive && p.id !== selfId).map((p) => p.id));
   const votedFor = players.find((p) => p.id === votedForId);
@@ -45,6 +48,7 @@ export function VoteScreen({ players, turnOrder, clues, round, selfId, onVote }:
         votableIds={votableIds}
         selectedId={votedForId}
         onVote={handleVote}
+        themes={themes}
       />
       {votedFor && (
         <p className="muted">

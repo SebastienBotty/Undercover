@@ -190,4 +190,53 @@ describe('GameApp', () => {
     fireEvent.click(screen.getByRole('button', { name: /rejouer/i }));
     expect(send).toHaveBeenCalledWith({ type: 'RESTART_GAME' });
   });
+
+  it('renders ThemeSelectScreen during THEME_SELECT and sends SUBMIT_THEME on submit', () => {
+    window.localStorage.setItem('undercover:clientId', 'p1');
+    const send = vi.fn();
+    vi.spyOn(socketModule, 'useGameSocket').mockReturnValue(
+      mockSocket({
+        status: 'open',
+        send,
+        lastMessage: {
+          type: 'ROOM_STATE',
+          phase: 'THEME_SELECT',
+          hostId: 'p1',
+          settings: { mode: 'note' },
+          turnOrder: ['p1', 'p2'],
+          themeSetterId: 'p1',
+          currentTheme: null,
+          themes: [],
+          clues: [],
+          round: 1,
+          players: [
+            { id: 'p1', name: 'Alice', alive: true, connected: true },
+            { id: 'p2', name: 'Bob', alive: true, connected: true },
+          ],
+        },
+      })
+    );
+    render(<GameApp roomCode="ABCDE" pseudo="Alice" isHost={false} onLeaveRoom={() => {}} />);
+    fireEvent.change(screen.getByLabelText(/propose un thème/i), { target: { value: 'La force' } });
+    fireEvent.click(screen.getByRole('button', { name: /envoyer/i }));
+    expect(send).toHaveBeenCalledWith({ type: 'SUBMIT_THEME', text: 'La force' });
+  });
+
+  it('shows the note instead of the character during ROLE_REVEAL in note mode', () => {
+    window.localStorage.setItem('undercover:clientId', 'c1');
+    vi.spyOn(socketModule, 'useGameSocket').mockReturnValue(
+      mockSocket({
+        status: 'open',
+        lastMessage: {
+          type: 'ROOM_STATE',
+          phase: 'ROLE_REVEAL',
+          hostId: 'c1',
+          settings: { mode: 'note' },
+          players: [{ id: 'c1', name: 'Seb', alive: true, connected: true, role: 'civil', character: null, note: 14 }],
+        },
+      })
+    );
+    render(<GameApp roomCode="ABCDE" pseudo="Seb" isHost={false} onLeaveRoom={() => {}} />);
+    expect(screen.getByText(/ta note : 14\/20/i)).toBeInTheDocument();
+  });
 });
