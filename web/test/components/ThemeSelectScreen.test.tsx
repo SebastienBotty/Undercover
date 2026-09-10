@@ -62,6 +62,29 @@ describe('ThemeSelectScreen', () => {
     expect(table).not.toHaveTextContent('Manche 2');
   });
 
+  it('disables the submit button while the draft is empty or whitespace-only', () => {
+    render(
+      <ThemeSelectScreen
+        players={players}
+        turnOrder={['p1', 'p2']}
+        clues={[]}
+        themes={[]}
+        round={1}
+        themeSetterId="p1"
+        selfId="p1"
+        onSubmitTheme={() => {}}
+      />
+    );
+    const submitButton = screen.getByRole('button', { name: /envoyer/i });
+    expect(submitButton).toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText(/propose un thème/i), { target: { value: '   ' } });
+    expect(submitButton).toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText(/propose un thème/i), { target: { value: 'La force brute' } });
+    expect(submitButton).not.toBeDisabled();
+  });
+
   it('shows a countdown derived from the turn deadline', () => {
     vi.useFakeTimers();
     try {

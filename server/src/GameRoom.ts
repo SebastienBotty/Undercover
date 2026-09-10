@@ -153,8 +153,13 @@ export class GameRoom extends DurableObject {
       this.sendErrorTo(playerId, 'NOT_YOUR_TURN', "Ce n'est pas ton tour de proposer un thème");
       return;
     }
-    room.themes.push({ round: room.round, playerId, text });
-    room.currentTheme = text;
+    const trimmedText = text.trim();
+    if (!trimmedText) {
+      this.sendErrorTo(playerId, 'EMPTY_THEME', 'Le thème ne peut pas être vide');
+      return;
+    }
+    room.themes.push({ round: room.round, playerId, text: trimmedText });
+    room.currentTheme = trimmedText;
     room.phase = 'CLUE_ROUND';
     const aliveIds = new Set(room.players.filter((p) => p.alive).map((p) => p.id));
     room.currentTurnIndex = nextAliveIndex(room.turnOrder, aliveIds, -1);

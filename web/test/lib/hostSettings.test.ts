@@ -50,6 +50,9 @@ describe('host settings storage', () => {
       JSON.stringify({ themes: ['anime'], similarityLevel: 'close', mrWhiteEnabled: false })
     );
     const settings = getStoredHostSettings();
+    expect(settings.animeSeries).toEqual([]);
+    expect(settings.clueTimerEnabled).toBe(true);
+    expect(settings.clueTimerSeconds).toBe(60);
     expect(settings.mode).toBe('classic');
     expect(settings.civilNote).toBe(14);
     expect(settings.undercoverNote).toBe(10);

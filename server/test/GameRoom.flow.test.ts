@@ -730,6 +730,49 @@ describe('GameRoom game flow', () => {
     expect(errorMsg).toMatchObject({ type: 'ERROR', code: 'NOT_YOUR_TURN' });
   });
 
+  it('rejects SUBMIT_THEME with an empty or whitespace-only theme, keeping the room in THEME_SELECT', async () => {
+    const code = 'FLOW-NOTE-THEME-EMPTY';
+    const id = env.GAME_ROOM.idFromName(code);
+    const stub = env.GAME_ROOM.get(id);
+
+    const wsA = await joinPlayer(stub, code, 'Alice', 'a', true);
+    const wsB = await joinPlayer(stub, code, 'Bob', 'b', false, [wsA]);
+    const wsC = await joinPlayer(stub, code, 'Carl', 'c', false, [wsA, wsB]);
+    const sockets: Record<string, WebSocket> = { a: wsA, b: wsB, c: wsC };
+
+    const started = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+    wsA.send(
+      JSON.stringify({
+        type: 'START_GAME',
+        settings: { themes: [], similarityLevel: 'none', mrWhiteEnabled: false, mode: 'note', civilNote: 14, undercoverNote: 10 },
+      })
+    );
+    await started;
+
+    const afterAlarmA = waitForMessage(wsA);
+    await runDurableObjectAlarm(stub);
+    const themeSelectSnap = await afterAlarmA;
+    const setterId = themeSelectSnap.themeSetterId as string;
+
+    const emptyErrorPromise = waitForMessage(sockets[setterId]);
+    sockets[setterId].send(JSON.stringify({ type: 'SUBMIT_THEME', text: '' }));
+    const emptyError = await emptyErrorPromise;
+    expect(emptyError).toMatchObject({ type: 'ERROR', code: 'EMPTY_THEME' });
+
+    const whitespaceErrorPromise = waitForMessage(sockets[setterId]);
+    sockets[setterId].send(JSON.stringify({ type: 'SUBMIT_THEME', text: '   ' }));
+    const whitespaceError = await whitespaceErrorPromise;
+    expect(whitespaceError).toMatchObject({ type: 'ERROR', code: 'EMPTY_THEME' });
+
+    // The room must still be in THEME_SELECT, waiting for the same setter -- a real theme now
+    // succeeds normally.
+    const afterTheme = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+    sockets[setterId].send(JSON.stringify({ type: 'SUBMIT_THEME', text: 'Force brute' }));
+    const [clueRoundSnap] = await afterTheme;
+    expect(clueRoundSnap.phase).toBe('CLUE_ROUND');
+    expect(clueRoundSnap.currentTheme).toBe('Force brute');
+  });
+
   it('passes the theme-setter duty to the next alive player on timeout, without eliminating anyone', async () => {
     const code = 'FLOW-NOTE-THEME-TIMEOUT';
     const id = env.GAME_ROOM.idFromName(code);
@@ -957,6 +1000,109 @@ describe('GameRoom game flow', () => {
     expect(restartSnaps[0].themes).toEqual([]);
     for (const p of restartSnaps[0].players) {
       expect(p.note).toBeNull();
+    }
+  });
+
+  it('plays a complete note-mode game from START_GAME to END, exercising a theme-timeout handoff and a vote elimination, with correct note pairing at the end', async () => {
+    const code = 'FLOW-NOTE-E2E';
+    const id = env.GAME_ROOM.idFromName(code);
+    const stub = env.GAME_ROOM.get(id);
+
+    const wsA = await joinPlayer(stub, code, 'Alice', 'a', true);
+    const wsB = await joinPlayer(stub, code, 'Bob', 'b', false, [wsA]);
+    const wsC = await joinPlayer(stub, code, 'Carl', 'c', false, [wsA, wsB]);
+    const wsD = await joinPlayer(stub, code, 'Dora', 'd', false, [wsA, wsB, wsC]);
+    const wsE = await joinPlayer(stub, code, 'Eve', 'e', false, [wsA, wsB, wsC, wsD]);
+    const sockets: Record<string, WebSocket> = { a: wsA, b: wsB, c: wsC, d: wsD, e: wsE };
+
+    // 5 players, Mr. White disabled: 1 undercover + 4 civils, guaranteeing a civilian majority
+    // (same reasoning as startNoteRolesAndReachVote above) and a deterministic civil win once
+    // the sole undercover is eliminated.
+    const started = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+    wsA.send(
+      JSON.stringify({
+        type: 'START_GAME',
+        settings: { themes: [], similarityLevel: 'none', mrWhiteEnabled: false, mode: 'note', civilNote: 14, undercoverNote: 10 },
+      })
+    );
+    const startSnaps = await started;
+    const roleById: Record<string, string> = {};
+    Object.keys(sockets).forEach((playerId, idx) => {
+      roleById[playerId] = startSnaps[idx].players.find((p: any) => p.id === playerId).role;
+    });
+    const undercoverId = Object.keys(roleById).find((pid) => roleById[pid] === 'undercover')!;
+    const civilIds = Object.keys(roleById).filter((pid) => roleById[pid] === 'civil');
+    expect(civilIds).toHaveLength(4);
+
+    // Round 1: ROLE_REVEAL -> THEME_SELECT, picking a random first theme-setter.
+    const afterAlarmA = waitForMessage(wsA);
+    await runDurableObjectAlarm(stub);
+    const themeSelectSnap = await afterAlarmA;
+    expect(themeSelectSnap.phase).toBe('THEME_SELECT');
+    const firstSetterId = themeSelectSnap.themeSetterId as string;
+
+    // Let the first setter's timer expire without ever sending SUBMIT_THEME: this exercises the
+    // "hand off to the next alive player, no elimination" path, with every player still alive
+    // (a normal, non-degenerate case).
+    const afterTimeout = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+    await runDurableObjectAlarm(stub);
+    const [timeoutSnap] = await afterTimeout;
+    expect(timeoutSnap.phase).toBe('THEME_SELECT');
+    const secondSetterId = timeoutSnap.themeSetterId as string;
+    expect(secondSetterId).not.toBe(firstSetterId);
+    expect(timeoutSnap.players.every((p: any) => p.alive)).toBe(true);
+
+    // The fresh setter now actually submits a theme, driving the first full clue-round pass.
+    const afterTheme1 = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+    sockets[secondSetterId].send(JSON.stringify({ type: 'SUBMIT_THEME', text: 'theme-1' }));
+    const [clueRoundSnap1] = await afterTheme1;
+    expect(clueRoundSnap1.phase).toBe('CLUE_ROUND');
+    const order1 = clueRoundSnap1.turnOrder as string[];
+
+    // Completing pass 1 puts the room back into THEME_SELECT synchronously (applyClue's mid-pair
+    // branch), so the last broadcast from this pass already carries the next theme-setter.
+    const afterPass1Snaps = await submitFullClueRound(sockets, order1, 1);
+    expect(afterPass1Snaps[0].phase).toBe('THEME_SELECT');
+    const thirdSetterId = afterPass1Snaps[0].themeSetterId as string;
+
+    // Second pass: a fresh theme, then the full clue round that opens the vote.
+    const afterTheme2 = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+    sockets[thirdSetterId].send(JSON.stringify({ type: 'SUBMIT_THEME', text: 'theme-2' }));
+    const [clueRoundSnap2] = await afterTheme2;
+    expect(clueRoundSnap2.phase).toBe('CLUE_ROUND');
+    const order2 = clueRoundSnap2.turnOrder as string[];
+
+    const voteSnaps = await submitFullClueRound(sockets, order2, 2);
+    expect(voteSnaps[0].phase).toBe('VOTE');
+
+    // Vote out the undercover player: everyone votes for them except the undercover, who votes
+    // for a civil -- an unambiguous majority, no tie.
+    let eliminationSnaps: any[] = [];
+    for (const voterId of Object.keys(sockets)) {
+      const target = voterId === undercoverId ? civilIds[0] : undercoverId;
+      const next = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+      sockets[voterId].send(JSON.stringify({ type: 'SUBMIT_VOTE', targetId: target }));
+      eliminationSnaps = await next;
+    }
+    expect(eliminationSnaps[0].phase).toBe('ELIMINATION');
+    expect(eliminationSnaps[0].lastEliminatedId).toBe(undercoverId);
+
+    // The reveal alarm resolves the elimination: with the sole undercover gone and no Mr.
+    // White, civils win immediately.
+    const afterReveal = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+    await runDurableObjectAlarm(stub);
+    const endSnaps = await afterReveal;
+    expect(endSnaps[0].phase).toBe('END');
+    expect(endSnaps[0].winner).toBe('civil');
+
+    // Note<->role pairing check: at END, buildSnapshot reveals every player's note, so this
+    // catches a swapped ternary in handleStartGame's note-assignment logic.
+    for (const p of endSnaps[0].players) {
+      if (p.role === 'civil') {
+        expect(p.note).toBe(14);
+      } else if (p.role === 'undercover') {
+        expect(p.note).toBe(10);
+      }
     }
   });
 

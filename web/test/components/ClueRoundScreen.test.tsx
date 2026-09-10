@@ -90,6 +90,38 @@ describe('ClueRoundScreen', () => {
     }
   });
 
+  it('shows the current theme when provided', () => {
+    render(
+      <ClueRoundScreen
+        players={players}
+        turnOrder={['p1', 'p2']}
+        currentTurnIndex={1}
+        clues={[]}
+        round={1}
+        currentTheme="La force brute"
+        selfId="p1"
+        onSubmitClue={() => {}}
+      />
+    );
+    expect(screen.getByText(/thème/i)).toBeInTheDocument();
+    expect(screen.getByText('La force brute')).toBeInTheDocument();
+  });
+
+  it('does not render a theme line when currentTheme is absent (classic mode)', () => {
+    render(
+      <ClueRoundScreen
+        players={players}
+        turnOrder={['p1', 'p2']}
+        currentTurnIndex={1}
+        clues={[]}
+        round={1}
+        selfId="p1"
+        onSubmitClue={() => {}}
+      />
+    );
+    expect(screen.queryByText(/thème/i)).not.toBeInTheDocument();
+  });
+
   it('shows no countdown when there is no turn deadline', () => {
     render(
       <ClueRoundScreen

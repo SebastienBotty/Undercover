@@ -86,28 +86,38 @@ export function LobbyScreen({
           </div>
 
           {settings.mode === "note" ? (
-            <div className="field">
-              <label htmlFor="civil-note-input">Note des Civils (0-20)</label>
-              <input
-                id="civil-note-input"
-                type="number"
-                min={0}
-                max={20}
-                className="input"
-                value={settings.civilNote}
-                onChange={(e) => onSettingsChange({ ...settings, civilNote: Number(e.target.value) })}
-              />
-              <label htmlFor="undercover-note-input">Note des Undercover (0-20)</label>
-              <input
-                id="undercover-note-input"
-                type="number"
-                min={0}
-                max={20}
-                className="input"
-                value={settings.undercoverNote}
-                onChange={(e) => onSettingsChange({ ...settings, undercoverNote: Number(e.target.value) })}
-              />
-            </div>
+            <>
+              <div className="field">
+                <label htmlFor="civil-note-input">Note des Civils (0-20)</label>
+                <input
+                  id="civil-note-input"
+                  type="number"
+                  min={0}
+                  max={20}
+                  className="input"
+                  value={settings.civilNote}
+                  onChange={(e) => {
+                    const value = e.target.value === "" ? settings.civilNote : Number(e.target.value);
+                    onSettingsChange({ ...settings, civilNote: value });
+                  }}
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="undercover-note-input">Note des Undercover (0-20)</label>
+                <input
+                  id="undercover-note-input"
+                  type="number"
+                  min={0}
+                  max={20}
+                  className="input"
+                  value={settings.undercoverNote}
+                  onChange={(e) => {
+                    const value = e.target.value === "" ? settings.undercoverNote : Number(e.target.value);
+                    onSettingsChange({ ...settings, undercoverNote: value });
+                  }}
+                />
+              </div>
+            </>
           ) : (
             <>
               <fieldset className={styles.themesFieldset}>

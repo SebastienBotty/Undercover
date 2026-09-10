@@ -121,6 +121,7 @@ export function GameApp({ roomCode, pseudo, isHost, onLeaveRoom }: GameAppProps)
           round={roomState.round}
           turnDeadline={roomState.turnDeadline}
           themes={roomState.themes}
+          currentTheme={roomState.currentTheme}
           selfId={getOrCreateClientId()}
           onSubmitClue={(text) => send({ type: 'SUBMIT_CLUE', text })}
         />

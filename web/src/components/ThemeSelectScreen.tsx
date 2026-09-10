@@ -11,7 +11,7 @@ interface ThemeSelectScreenProps {
   players: Player[];
   turnOrder: string[];
   clues: Clue[];
-  themes: ThemeEntry[];
+  themes?: ThemeEntry[];
   round: number;
   themeSetterId: string | null;
   turnDeadline?: number | null;
@@ -62,7 +62,7 @@ export function ThemeSelectScreen({ players, turnOrder, clues, themes, round, th
             onChange={(e) => setDraft(e.target.value)}
             placeholder="Ex. La puissance d'un épéiste de One Piece"
           />
-          <button type="submit" className="btn btnBlock">Envoyer</button>
+          <button type="submit" className="btn btnBlock" disabled={!draft.trim()}>Envoyer</button>
         </form>
       ) : (
         <p className="muted">En attente du thème de {setter?.name}...</p>

@@ -15,13 +15,14 @@ interface ClueRoundScreenProps {
   round: number;
   turnDeadline?: number | null;
   themes?: ThemeEntry[];
+  currentTheme?: string | null;
   selfId: string;
   onSubmitClue: (text: string) => void;
 }
 
 const URGENT_THRESHOLD_SECONDS = 10;
 
-export function ClueRoundScreen({ players, turnOrder, currentTurnIndex, clues, round, turnDeadline, themes, selfId, onSubmitClue }: ClueRoundScreenProps) {
+export function ClueRoundScreen({ players, turnOrder, currentTurnIndex, clues, round, turnDeadline, themes, currentTheme, selfId, onSubmitClue }: ClueRoundScreenProps) {
   const [draft, setDraft] = useState('');
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
   const currentPlayerId = turnOrder[currentTurnIndex];
@@ -50,6 +51,7 @@ export function ClueRoundScreen({ players, turnOrder, currentTurnIndex, clues, r
         )}
       </div>
       <h2>Indices</h2>
+      {currentTheme && <p className="muted">Thème : <strong>{currentTheme}</strong></p>}
       <RoundRecapTable
         players={players}
         turnOrder={turnOrder}
