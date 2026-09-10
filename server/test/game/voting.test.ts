@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { tallyVotes, checkWinCondition, checkMrWhiteGuess } from '../../src/game/voting';
+import { tallyVotes, checkWinCondition, checkMrWhiteGuess, checkMrWhiteNoteGuess } from '../../src/game/voting';
 
 describe('tallyVotes', () => {
   it('eliminates the player with the most votes', () => {
@@ -82,5 +82,20 @@ describe('checkMrWhiteGuess', () => {
 
   it('returns false for a wrong guess', () => {
     expect(checkMrWhiteGuess('Vegeta', 'Goku')).toBe(false);
+  });
+});
+
+describe('checkMrWhiteNoteGuess', () => {
+  it('matches an exact numeric guess, ignoring surrounding whitespace', () => {
+    expect(checkMrWhiteNoteGuess('14', 14)).toBe(true);
+    expect(checkMrWhiteNoteGuess('  14 ', 14)).toBe(true);
+  });
+
+  it('returns false for a wrong guess', () => {
+    expect(checkMrWhiteNoteGuess('12', 14)).toBe(false);
+  });
+
+  it('returns false for a non-numeric guess', () => {
+    expect(checkMrWhiteNoteGuess('quatorze', 14)).toBe(false);
   });
 });

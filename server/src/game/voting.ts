@@ -44,3 +44,8 @@ export function checkMrWhiteGuess(guess: string, civilCharacterName: string): bo
   const normalize = (s: string) => s.trim().toLowerCase();
   return normalize(guess) === normalize(civilCharacterName);
 }
+
+export function checkMrWhiteNoteGuess(guess: string, civilNote: number): boolean {
+  const parsed = Number(guess.trim());
+  return Number.isFinite(parsed) && parsed === civilNote;
+}
