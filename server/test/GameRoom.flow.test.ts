@@ -211,7 +211,7 @@ describe('GameRoom game flow', () => {
     expect(snapA.phase).toBe('ROLE_REVEAL');
   });
 
-  it('assigns notes instead of characters when starting a note-mode game', async () => {
+  it('assigns random, distinct notes instead of characters when starting a note-mode game', async () => {
     const code = 'FLOW-NOTE-START';
     const id = env.GAME_ROOM.idFromName(code);
     const stub = env.GAME_ROOM.get(id);
@@ -224,62 +224,30 @@ describe('GameRoom game flow', () => {
     const started = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
     wsA.send(
       JSON.stringify({
+        // The host cannot choose civilNote/undercoverNote -- the server always draws them at
+        // random, so any value sent here is ignored.
         type: 'START_GAME',
-        settings: { themes: [], similarityLevel: 'none', mrWhiteEnabled: false, mode: 'note', civilNote: 14, undercoverNote: 10 },
+        settings: { themes: [], similarityLevel: 'none', mrWhiteEnabled: false, mode: 'note' },
       })
     );
     const snaps = await started;
 
+    const { civilNote, undercoverNote } = snaps[0].settings;
+    expect(civilNote).not.toBe(undercoverNote);
+    expect(Math.abs(civilNote - undercoverNote)).toBeLessThanOrEqual(6);
+    for (const note of [civilNote, undercoverNote]) {
+      expect(note).toBeGreaterThanOrEqual(0);
+      expect(note).toBeLessThanOrEqual(20);
+    }
+
     for (const [playerId, snap] of Object.entries({ a: snaps[0], b: snaps[1], c: snaps[2] })) {
       expect(snap.phase).toBe('ROLE_REVEAL');
-      expect(snap.settings.civilNote).toBe(14);
-      expect(snap.settings.undercoverNote).toBe(10);
+      expect(snap.settings.civilNote).toBe(civilNote);
+      expect(snap.settings.undercoverNote).toBe(undercoverNote);
       const self = snap.players.find((p: any) => p.id === playerId);
       expect(self.character).toBeNull();
-      expect([10, 14]).toContain(self.note);
+      expect([civilNote, undercoverNote]).toContain(self.note);
     }
-  });
-
-  it('rejects starting a note-mode game when both notes are equal', async () => {
-    const code = 'FLOW-NOTE-EQUAL';
-    const id = env.GAME_ROOM.idFromName(code);
-    const stub = env.GAME_ROOM.get(id);
-
-    const wsA = await joinPlayer(stub, code, 'Alice', 'a', true);
-    await joinPlayer(stub, code, 'Bob', 'b', false, [wsA]);
-    await joinPlayer(stub, code, 'Carl', 'c', false, [wsA]);
-
-    const errorPromise = waitForMessage(wsA);
-    wsA.send(
-      JSON.stringify({
-        type: 'START_GAME',
-        settings: { themes: [], similarityLevel: 'none', mrWhiteEnabled: false, mode: 'note', civilNote: 12, undercoverNote: 12 },
-      })
-    );
-    const errorMsg = await errorPromise;
-    expect(errorMsg).toMatchObject({ type: 'ERROR', code: 'CANNOT_START_GAME' });
-  });
-
-  it('clamps note-mode notes into [0, 20]', async () => {
-    const code = 'FLOW-NOTE-CLAMP';
-    const id = env.GAME_ROOM.idFromName(code);
-    const stub = env.GAME_ROOM.get(id);
-
-    const wsA = await joinPlayer(stub, code, 'Alice', 'a', true);
-    const wsB = await joinPlayer(stub, code, 'Bob', 'b', false, [wsA]);
-    const wsC = await joinPlayer(stub, code, 'Carl', 'c', false, [wsA, wsB]);
-    const sockets: Record<string, WebSocket> = { a: wsA, b: wsB, c: wsC };
-
-    const started = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
-    wsA.send(
-      JSON.stringify({
-        type: 'START_GAME',
-        settings: { themes: [], similarityLevel: 'none', mrWhiteEnabled: false, mode: 'note', civilNote: -5, undercoverNote: 999 },
-      })
-    );
-    const [snapA] = await started;
-    expect(snapA.settings.civilNote).toBe(0);
-    expect(snapA.settings.undercoverNote).toBe(20);
   });
 
   it('rejects SUBMIT_VOTE targeting a nonexistent player without recording the vote', async () => {
@@ -488,6 +456,118 @@ describe('GameRoom game flow', () => {
     expect(afterGuess[0].winner).toBeNull();
   });
 
+  it('does not leave a stale alarm pending after Mr. White guesses wrong with the clue timer disabled', async () => {
+    // Regression test: enterEliminationPhase always sets a 60s alarm for Mr. White's guess
+    // window, regardless of clueTimerEnabled. If Mr. White answers before that alarm fires and
+    // the game continues with the clue timer disabled, scheduleClueTimeout used to only null out
+    // turnDeadline without cancelling the still-pending 60s alarm -- which would later fire and
+    // hit whatever phase the room was in by then (here, CLUE_ROUND's alarm() branch), silently
+    // eliminating the current-turn player for no reason.
+    const code = 'FLOW-STALE-ALARM';
+    const id = env.GAME_ROOM.idFromName(code);
+    const stub = env.GAME_ROOM.get(id);
+
+    const wsA = await joinPlayer(stub, code, 'Alice', 'a', true);
+    const wsB = await joinPlayer(stub, code, 'Bob', 'b', false, [wsA]);
+    const wsC = await joinPlayer(stub, code, 'Carl', 'c', false, [wsA, wsB]);
+    const wsD = await joinPlayer(stub, code, 'Dora', 'd', false, [wsA, wsB, wsC]);
+    const wsE = await joinPlayer(stub, code, 'Eve', 'e', false, [wsA, wsB, wsC, wsD]);
+    const sockets: Record<string, WebSocket> = { a: wsA, b: wsB, c: wsC, d: wsD, e: wsE };
+    const order = Object.keys(sockets);
+
+    const started = Promise.all(order.map((pid) => waitForMessage(sockets[pid])));
+    wsA.send(
+      JSON.stringify({
+        type: 'START_GAME',
+        settings: { themes: ['anime'], similarityLevel: 'none', mrWhiteEnabled: true, clueTimerEnabled: false },
+      })
+    );
+    const startResults = await started;
+    const ownRole: Record<string, string | null> = {};
+    order.forEach((pid, idx) => {
+      ownRole[pid] = startResults[idx].players.find((p: any) => p.id === pid).role;
+    });
+    const mrWhiteId = order.find((pid) => ownRole[pid] === 'mrwhite')!;
+
+    const afterAlarmA = waitForMessage(wsA);
+    await runDurableObjectAlarm(stub);
+    const clueRoundSnap = await afterAlarmA;
+    expect(clueRoundSnap.turnDeadline).toBeNull(); // no timer -- confirms clueTimerEnabled: false took effect
+
+    const turnOrder = clueRoundSnap.turnOrder as string[];
+    await submitFullClueRound(sockets, turnOrder, 1);
+    await submitFullClueRound(sockets, turnOrder, 2);
+
+    // Everyone votes to eliminate Mr. White -- this sets the 60s Mr. White guess-window alarm.
+    let voteSnaps: any[] = [];
+    for (const playerId of turnOrder) {
+      const next = Promise.all(order.map((pid) => waitForMessage(sockets[pid])));
+      sockets[playerId].send(JSON.stringify({ type: 'SUBMIT_VOTE', targetId: mrWhiteId }));
+      voteSnaps = await next;
+    }
+    expect(voteSnaps[0].phase).toBe('ELIMINATION');
+
+    // Mr. White answers wrong well before the 60s alarm would naturally fire -- the game
+    // continues into a fresh CLUE_ROUND (5 players, Mr. White gone, 1 undercover + 3 civils
+    // still alive), with the clue timer still disabled.
+    const guessResult = Promise.all(order.map((pid) => waitForMessage(sockets[pid])));
+    sockets[mrWhiteId].send(JSON.stringify({ type: 'MR_WHITE_GUESS', guess: 'definitely-wrong' }));
+    const afterGuess = await guessResult;
+    expect(afterGuess[0].phase).toBe('CLUE_ROUND');
+    expect(afterGuess[0].turnDeadline).toBeNull();
+    const currentTurnPlayerId = afterGuess[0].turnOrder[afterGuess[0].currentTurnIndex] as string;
+
+    // If the 60s ELIMINATION alarm was left dangling, firing it now hits CLUE_ROUND's alarm()
+    // branch and eliminates currentTurnPlayerId. Fire whatever alarm may or may not be pending,
+    // then confirm that player can still submit a clue normally (i.e. they were never touched).
+    await runDurableObjectAlarm(stub);
+    const ownResponse = waitForMessage(sockets[currentTurnPlayerId]);
+    sockets[currentTurnPlayerId].send(JSON.stringify({ type: 'SUBMIT_CLUE', text: 'still here' }));
+    const response = await ownResponse;
+    expect(response.type).toBe('ROOM_STATE');
+    expect(response.players.find((p: any) => p.id === currentTurnPlayerId).alive).toBe(true);
+    expect(response.clues.some((c: any) => c.playerId === currentTurnPlayerId && c.text === 'still here')).toBe(true);
+  });
+
+  it('caps clue and theme text length to prevent unbounded room state growth', async () => {
+    const code = 'FLOW-TEXT-LENGTH-CAP';
+    const id = env.GAME_ROOM.idFromName(code);
+    const stub = env.GAME_ROOM.get(id);
+
+    const wsA = await joinPlayer(stub, code, 'Alice', 'a', true);
+    const wsB = await joinPlayer(stub, code, 'Bob', 'b', false, [wsA]);
+    const wsC = await joinPlayer(stub, code, 'Carl', 'c', false, [wsA, wsB]);
+    const sockets: Record<string, WebSocket> = { a: wsA, b: wsB, c: wsC };
+
+    const started = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+    wsA.send(
+      JSON.stringify({
+        type: 'START_GAME',
+        settings: { themes: [], similarityLevel: 'none', mrWhiteEnabled: false, mode: 'note' },
+      })
+    );
+    await started;
+
+    const afterAlarmA = waitForMessage(wsA);
+    await runDurableObjectAlarm(stub);
+    const themeSelectSnap = await afterAlarmA;
+    const setterId = themeSelectSnap.themeSetterId as string;
+
+    const longTheme = 'x'.repeat(500);
+    const afterTheme = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+    sockets[setterId].send(JSON.stringify({ type: 'SUBMIT_THEME', text: longTheme }));
+    const [clueRoundSnap] = await afterTheme;
+    expect(clueRoundSnap.currentTheme.length).toBe(200);
+
+    const longClue = 'y'.repeat(500);
+    const firstPlayerId = (clueRoundSnap.turnOrder as string[])[clueRoundSnap.currentTurnIndex];
+    const afterClue = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+    sockets[firstPlayerId].send(JSON.stringify({ type: 'SUBMIT_CLUE', text: longClue }));
+    const [afterClueSnap] = await afterClue;
+    const storedClue = afterClueSnap.clues.find((c: any) => c.playerId === firstPlayerId);
+    expect(storedClue.text.length).toBe(200);
+  });
+
   it('eliminates the player who misses the 60s clue timeout mid-round', async () => {
     const code = 'FLOW-CLUE-TIMEOUT';
     const id = env.GAME_ROOM.idFromName(code);
@@ -674,7 +754,7 @@ describe('GameRoom game flow', () => {
     wsA.send(
       JSON.stringify({
         type: 'START_GAME',
-        settings: { themes: [], similarityLevel: 'none', mrWhiteEnabled: false, mode: 'note', civilNote: 14, undercoverNote: 10 },
+        settings: { themes: [], similarityLevel: 'none', mrWhiteEnabled: false, mode: 'note' },
       })
     );
     await started;
@@ -713,7 +793,7 @@ describe('GameRoom game flow', () => {
     wsA.send(
       JSON.stringify({
         type: 'START_GAME',
-        settings: { themes: [], similarityLevel: 'none', mrWhiteEnabled: false, mode: 'note', civilNote: 14, undercoverNote: 10 },
+        settings: { themes: [], similarityLevel: 'none', mrWhiteEnabled: false, mode: 'note' },
       })
     );
     await started;
@@ -744,7 +824,7 @@ describe('GameRoom game flow', () => {
     wsA.send(
       JSON.stringify({
         type: 'START_GAME',
-        settings: { themes: [], similarityLevel: 'none', mrWhiteEnabled: false, mode: 'note', civilNote: 14, undercoverNote: 10 },
+        settings: { themes: [], similarityLevel: 'none', mrWhiteEnabled: false, mode: 'note' },
       })
     );
     await started;
@@ -787,7 +867,7 @@ describe('GameRoom game flow', () => {
     wsA.send(
       JSON.stringify({
         type: 'START_GAME',
-        settings: { themes: [], similarityLevel: 'none', mrWhiteEnabled: false, mode: 'note', civilNote: 14, undercoverNote: 10 },
+        settings: { themes: [], similarityLevel: 'none', mrWhiteEnabled: false, mode: 'note' },
       })
     );
     await started;
@@ -835,7 +915,7 @@ describe('GameRoom game flow', () => {
     wsA.send(
       JSON.stringify({
         type: 'START_GAME',
-        settings: { themes: [], similarityLevel: 'none', mrWhiteEnabled: false, mode: 'note', civilNote: 14, undercoverNote: 10 },
+        settings: { themes: [], similarityLevel: 'none', mrWhiteEnabled: false, mode: 'note' },
       })
     );
     await started;
@@ -888,11 +968,13 @@ describe('GameRoom game flow', () => {
     const started = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
     wsA.send(
       JSON.stringify({
+        // The host cannot choose civilNote/undercoverNote -- the server draws them at random.
         type: 'START_GAME',
-        settings: { themes: [], similarityLevel: 'none', mrWhiteEnabled, mode: 'note', civilNote: 14, undercoverNote: 10 },
+        settings: { themes: [], similarityLevel: 'none', mrWhiteEnabled, mode: 'note' },
       })
     );
     const snaps = await started;
+    const civilNote = snaps[0].settings.civilNote as number;
     const roleById: Record<string, string> = {};
     Object.keys(sockets).forEach((playerId, idx) => {
       roleById[playerId] = snaps[idx].players.find((p: any) => p.id === playerId).role;
@@ -912,11 +994,11 @@ describe('GameRoom game flow', () => {
 
     await playOneThemeAndClueRound(1);
     const voteSnaps = await playOneThemeAndClueRound(2);
-    return { stub, sockets, roleById, voteSnaps };
+    return { stub, sockets, roleById, voteSnaps, civilNote };
   }
 
   it('lets Mr. White win by guessing the exact civil note', async () => {
-    const { sockets, roleById, voteSnaps } = await startNoteRolesAndReachVote('FLOW-NOTE-MRWHITE-WIN', true);
+    const { sockets, roleById, voteSnaps, civilNote } = await startNoteRolesAndReachVote('FLOW-NOTE-MRWHITE-WIN', true);
     expect(voteSnaps[0].phase).toBe('VOTE');
     const mrWhiteId = Object.keys(roleById).find((id) => roleById[id] === 'mrwhite')!;
 
@@ -936,14 +1018,14 @@ describe('GameRoom game flow', () => {
     expect(eliminationSnaps[0].phase).toBe('ELIMINATION');
 
     const afterGuess = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
-    sockets[mrWhiteId].send(JSON.stringify({ type: 'MR_WHITE_GUESS', guess: '14' }));
+    sockets[mrWhiteId].send(JSON.stringify({ type: 'MR_WHITE_GUESS', guess: String(civilNote) }));
     const endSnaps = await afterGuess;
     expect(endSnaps[0].phase).toBe('END');
     expect(endSnaps[0].winner).toBe('mrwhite');
   });
 
   it('does not let Mr. White win by guessing the wrong note', async () => {
-    const { sockets, roleById, voteSnaps } = await startNoteRolesAndReachVote('FLOW-NOTE-MRWHITE-LOSE', true);
+    const { sockets, roleById, voteSnaps, civilNote } = await startNoteRolesAndReachVote('FLOW-NOTE-MRWHITE-LOSE', true);
     expect(voteSnaps[0].phase).toBe('VOTE');
     const mrWhiteId = Object.keys(roleById).find((id) => roleById[id] === 'mrwhite')!;
 
@@ -958,8 +1040,10 @@ describe('GameRoom game flow', () => {
     }
     expect(eliminationSnaps[0].phase).toBe('ELIMINATION');
 
+    // Wrong on purpose: any value in [0, 20] other than the actual civil note.
+    const wrongGuess = civilNote === 0 ? 1 : civilNote - 1;
     const afterGuess = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
-    sockets[mrWhiteId].send(JSON.stringify({ type: 'MR_WHITE_GUESS', guess: '2' }));
+    sockets[mrWhiteId].send(JSON.stringify({ type: 'MR_WHITE_GUESS', guess: String(wrongGuess) }));
     const afterGuessSnaps = await afterGuess;
     expect(afterGuessSnaps[0].winner).toBeNull();
   });
@@ -1021,11 +1105,13 @@ describe('GameRoom game flow', () => {
     const started = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
     wsA.send(
       JSON.stringify({
+        // The host cannot choose civilNote/undercoverNote -- the server draws them at random.
         type: 'START_GAME',
-        settings: { themes: [], similarityLevel: 'none', mrWhiteEnabled: false, mode: 'note', civilNote: 14, undercoverNote: 10 },
+        settings: { themes: [], similarityLevel: 'none', mrWhiteEnabled: false, mode: 'note' },
       })
     );
     const startSnaps = await started;
+    const { civilNote, undercoverNote } = startSnaps[0].settings;
     const roleById: Record<string, string> = {};
     Object.keys(sockets).forEach((playerId, idx) => {
       roleById[playerId] = startSnaps[idx].players.find((p: any) => p.id === playerId).role;
@@ -1099,9 +1185,9 @@ describe('GameRoom game flow', () => {
     // catches a swapped ternary in handleStartGame's note-assignment logic.
     for (const p of endSnaps[0].players) {
       if (p.role === 'civil') {
-        expect(p.note).toBe(14);
+        expect(p.note).toBe(civilNote);
       } else if (p.role === 'undercover') {
-        expect(p.note).toBe(10);
+        expect(p.note).toBe(undercoverNote);
       }
     }
   });
@@ -1117,6 +1203,71 @@ describe('GameRoom game flow', () => {
     // Still in LOBBY (game never started) -- the host cannot restart what hasn't ended.
     const errorPromise = waitForMessage(wsA);
     wsA.send(JSON.stringify({ type: 'RESTART_GAME' }));
+    const error = await errorPromise;
+    expect(error).toMatchObject({ type: 'ERROR', code: 'WRONG_PHASE' });
+  });
+
+  it('broadcasts UPDATE_SETTINGS from the host to every player in the lobby', async () => {
+    const code = 'FLOW-SETTINGS-BROADCAST';
+    const id = env.GAME_ROOM.idFromName(code);
+    const stub = env.GAME_ROOM.get(id);
+
+    const wsA = await joinPlayer(stub, code, 'Alice', 'a', true);
+    const wsB = await joinPlayer(stub, code, 'Bob', 'b', false, [wsA]);
+
+    const nextSettings = { themes: ['anime'], similarityLevel: 'very_close', mrWhiteEnabled: true };
+    const broadcastResult = Promise.all([waitForMessage(wsA), waitForMessage(wsB)]);
+    wsA.send(JSON.stringify({ type: 'UPDATE_SETTINGS', settings: nextSettings }));
+    const [snapA, snapB] = await broadcastResult;
+
+    expect(snapA.settings).toMatchObject(nextSettings);
+    expect(snapB.settings).toMatchObject(nextSettings);
+  });
+
+  it('rejects UPDATE_SETTINGS from a non-host', async () => {
+    const code = 'FLOW-SETTINGS-NOT-HOST';
+    const id = env.GAME_ROOM.idFromName(code);
+    const stub = env.GAME_ROOM.get(id);
+
+    const wsA = await joinPlayer(stub, code, 'Alice', 'a', true);
+    const wsB = await joinPlayer(stub, code, 'Bob', 'b', false, [wsA]);
+
+    const errorPromise = waitForMessage(wsB);
+    wsB.send(
+      JSON.stringify({
+        type: 'UPDATE_SETTINGS',
+        settings: { themes: ['anime'], similarityLevel: 'close', mrWhiteEnabled: false },
+      })
+    );
+    const error = await errorPromise;
+    expect(error).toMatchObject({ type: 'ERROR', code: 'NOT_HOST' });
+  });
+
+  it('rejects UPDATE_SETTINGS outside the LOBBY phase', async () => {
+    const code = 'FLOW-SETTINGS-WRONG-PHASE';
+    const id = env.GAME_ROOM.idFromName(code);
+    const stub = env.GAME_ROOM.get(id);
+
+    const wsA = await joinPlayer(stub, code, 'Alice', 'a', true);
+    const wsB = await joinPlayer(stub, code, 'Bob', 'b', false, [wsA]);
+    const wsC = await joinPlayer(stub, code, 'Carl', 'c', false, [wsA, wsB]);
+
+    const started = Promise.all([waitForMessage(wsA), waitForMessage(wsB), waitForMessage(wsC)]);
+    wsA.send(
+      JSON.stringify({
+        type: 'START_GAME',
+        settings: { themes: ['anime'], similarityLevel: 'none', mrWhiteEnabled: false },
+      })
+    );
+    await started;
+
+    const errorPromise = waitForMessage(wsA);
+    wsA.send(
+      JSON.stringify({
+        type: 'UPDATE_SETTINGS',
+        settings: { themes: ['anime'], similarityLevel: 'close', mrWhiteEnabled: false },
+      })
+    );
     const error = await errorPromise;
     expect(error).toMatchObject({ type: 'ERROR', code: 'WRONG_PHASE' });
   });

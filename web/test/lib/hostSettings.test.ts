@@ -14,8 +14,6 @@ describe('host settings storage', () => {
       clueTimerEnabled: true,
       clueTimerSeconds: 60,
       mode: 'classic',
-      civilNote: 14,
-      undercoverNote: 10,
     });
   });
 
@@ -28,8 +26,6 @@ describe('host settings storage', () => {
       clueTimerEnabled: false,
       clueTimerSeconds: 45,
       mode: 'note',
-      civilNote: 16,
-      undercoverNote: 9,
     });
     expect(getStoredHostSettings()).toEqual({
       themes: ['anime', 'films'],
@@ -39,8 +35,6 @@ describe('host settings storage', () => {
       clueTimerEnabled: false,
       clueTimerSeconds: 45,
       mode: 'note',
-      civilNote: 16,
-      undercoverNote: 9,
     });
   });
 
@@ -54,7 +48,5 @@ describe('host settings storage', () => {
     expect(settings.clueTimerEnabled).toBe(true);
     expect(settings.clueTimerSeconds).toBe(60);
     expect(settings.mode).toBe('classic');
-    expect(settings.civilNote).toBe(14);
-    expect(settings.undercoverNote).toBe(10);
   });
 });

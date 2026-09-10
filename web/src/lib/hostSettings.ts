@@ -17,10 +17,6 @@ export interface RoomSettings {
   clueTimerSeconds: number;
   /** 'classic' (character-based) or 'note' (numeric-note-based). */
   mode: GameMode;
-  /** Note given to Civils in 'note' mode, 0-20. */
-  civilNote: number;
-  /** Note given to Undercover in 'note' mode, 0-20. */
-  undercoverNote: number;
 }
 
 const STORAGE_KEY = 'undercover:hostSettings';
@@ -33,8 +29,6 @@ const DEFAULT_SETTINGS: RoomSettings = {
   clueTimerEnabled: true,
   clueTimerSeconds: 60,
   mode: 'classic',
-  civilNote: 14,
-  undercoverNote: 10,
 };
 
 export function getStoredHostSettings(): RoomSettings {
@@ -52,4 +46,10 @@ export function storeHostSettings(settings: RoomSettings): void {
   // Guard against SSR/build-time calls, where `window` doesn't exist yet.
   if (typeof window === 'undefined') return;
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+}
+
+// The server's RoomSettings only guarantees themes/similarityLevel/mrWhiteEnabled -- fill in the
+// rest with defaults so non-host viewers can render a room's live settings safely.
+export function normalizeSettings(settings: Partial<RoomSettings> | null | undefined): RoomSettings {
+  return { ...DEFAULT_SETTINGS, ...settings };
 }

@@ -7,10 +7,12 @@ import { nextAliveIndex, isClueRoundComplete, nextOddRound, resolveClueTimerSeco
 import { tallyVotes, checkWinCondition, checkMrWhiteGuess, checkMrWhiteNoteGuess } from './game/voting';
 import { selectCharacterPair } from './characters/selectPair';
 import { CHARACTERS } from './characters/data';
-import { clampNote, notesAreDistinct, pickRandomThemeSetter } from './game/notes';
+import { generateDistinctNotes, pickRandomThemeSetter } from './game/notes';
 
 const STORAGE_KEY = 'room';
 const CLUE_ROUNDS_PER_VOTE = 2;
+/** Caps clue/theme text length so a room's persisted state can't grow unbounded. */
+const MAX_TEXT_LENGTH = 200;
 
 interface ConnAttachment {
   playerId: string;
@@ -61,6 +63,9 @@ export class GameRoom extends DurableObject {
     switch (msg.type) {
       case 'START_GAME':
         await this.handleStartGame(attachment.playerId, msg.settings);
+        break;
+      case 'UPDATE_SETTINGS':
+        await this.handleUpdateSettings(attachment.playerId, msg.settings);
         break;
       case 'SUBMIT_CLUE':
         await this.handleSubmitClue(attachment.playerId, msg.text);
@@ -127,6 +132,10 @@ export class GameRoom extends DurableObject {
     const room = this.room!;
     if (!room.settings.clueTimerEnabled) {
       room.turnDeadline = null;
+      // A previous phase (e.g. Mr. White's 60s guess window) may have left an alarm pending --
+      // without deleting it, that stale alarm would still fire and hit whatever phase this room
+      // is in by then, mutating state nobody asked for (see the 2026-09-10 review finding).
+      await this.ctx.storage.deleteAlarm();
       return;
     }
     const deadline = Date.now() + resolveClueTimerSeconds(room.settings.clueTimerSeconds) * 1000;
@@ -153,7 +162,7 @@ export class GameRoom extends DurableObject {
       this.sendErrorTo(playerId, 'NOT_YOUR_TURN', "Ce n'est pas ton tour de proposer un thème");
       return;
     }
-    const trimmedText = text.trim();
+    const trimmedText = text.trim().slice(0, MAX_TEXT_LENGTH);
     if (!trimmedText) {
       this.sendErrorTo(playerId, 'EMPTY_THEME', 'Le thème ne peut pas être vide');
       return;
@@ -164,6 +173,21 @@ export class GameRoom extends DurableObject {
     const aliveIds = new Set(room.players.filter((p) => p.alive).map((p) => p.id));
     room.currentTurnIndex = nextAliveIndex(room.turnOrder, aliveIds, -1);
     await this.scheduleClueTimeout();
+    await this.saveRoom();
+    this.broadcast();
+  }
+
+  private async handleUpdateSettings(playerId: string, settings: RoomSettings) {
+    const room = this.room!;
+    if (playerId !== room.hostId) {
+      this.sendErrorTo(playerId, 'NOT_HOST', "Seul l'hôte peut modifier les réglages");
+      return;
+    }
+    if (room.phase !== 'LOBBY') {
+      this.sendErrorTo(playerId, 'WRONG_PHASE', 'Les réglages ne peuvent être modifiés que dans le salon');
+      return;
+    }
+    room.settings = settings;
     await this.saveRoom();
     this.broadcast();
   }
@@ -190,17 +214,13 @@ export class GameRoom extends DurableObject {
     let civilNote = 0;
     let undercoverNote = 0;
     try {
-      // Both branches can throw for invalid combinations (e.g. too few characters in the
-      // selected themes, equal notes, or a player/role-count combo that can't guarantee a
-      // civilian majority) -- catch here so the host gets a typed error instead of an
-      // uncaught exception and a half-started room.
+      // Can throw for invalid combinations (e.g. too few characters in the selected themes, or
+      // a player/role-count combo that can't guarantee a civilian majority) -- catch here so the
+      // host gets a typed error instead of an uncaught exception and a half-started room.
       roles = assignRoles(playerIds, settings);
       if (mode === 'note') {
-        civilNote = clampNote(settings.civilNote);
-        undercoverNote = clampNote(settings.undercoverNote);
-        if (!notesAreDistinct(civilNote, undercoverNote)) {
-          throw new Error('Les notes des Civils et des Undercover doivent être différentes');
-        }
+        // Notes are never chosen by the host -- always drawn at random, guaranteed distinct.
+        ({ civilNote, undercoverNote } = generateDistinctNotes(Math.random));
       } else {
         selection = selectCharacterPair(
           CHARACTERS,
@@ -276,7 +296,7 @@ export class GameRoom extends DurableObject {
       this.sendErrorTo(playerId, 'NOT_YOUR_TURN', "Ce n'est pas ton tour");
       return;
     }
-    await this.applyClue(playerId, text);
+    await this.applyClue(playerId, text.slice(0, MAX_TEXT_LENGTH));
   }
 
   private async applyClue(playerId: string, text: string) {

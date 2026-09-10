@@ -1,23 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { NOTE_MIN, NOTE_MAX, NOTE_DEFAULT, clampNote, notesAreDistinct, pickRandomThemeSetter } from '../../src/game/notes';
-
-describe('clampNote', () => {
-  it('defaults to NOTE_DEFAULT when the host requested no value', () => {
-    expect(clampNote(undefined)).toBe(NOTE_DEFAULT);
-  });
-
-  it('passes through a value already within [0, 20]', () => {
-    expect(clampNote(14)).toBe(14);
-  });
-
-  it('clamps values below the minimum', () => {
-    expect(clampNote(-5)).toBe(NOTE_MIN);
-  });
-
-  it('clamps values above the maximum', () => {
-    expect(clampNote(35)).toBe(NOTE_MAX);
-  });
-});
+import { NOTE_MIN, NOTE_MAX, MAX_NOTE_GAP, notesAreDistinct, generateDistinctNotes, pickRandomThemeSetter } from '../../src/game/notes';
 
 describe('notesAreDistinct', () => {
   it('returns true when the two notes differ', () => {
@@ -26,6 +8,42 @@ describe('notesAreDistinct', () => {
 
   it('returns false when the two notes are equal', () => {
     expect(notesAreDistinct(12, 12)).toBe(false);
+  });
+});
+
+describe('generateDistinctNotes', () => {
+  it('returns two distinct notes within [0, 20], at most MAX_NOTE_GAP apart', () => {
+    for (let i = 0; i < 200; i++) {
+      const { civilNote, undercoverNote } = generateDistinctNotes(Math.random);
+      expect(civilNote).toBeGreaterThanOrEqual(NOTE_MIN);
+      expect(civilNote).toBeLessThanOrEqual(NOTE_MAX);
+      expect(undercoverNote).toBeGreaterThanOrEqual(NOTE_MIN);
+      expect(undercoverNote).toBeLessThanOrEqual(NOTE_MAX);
+      expect(civilNote).not.toBe(undercoverNote);
+      expect(Math.abs(civilNote - undercoverNote)).toBeLessThanOrEqual(MAX_NOTE_GAP);
+    }
+  });
+
+  it('uses the injected random function deterministically', () => {
+    // civilNote: floor(0 * 21) = 0. Window around 0 clamped to [0, 6] (width 7).
+    // undercoverNote: floor(0.5 * 7) + 0 = 3.
+    const values = [0, 0.5];
+    let i = 0;
+    const scripted = () => values[i++];
+    const { civilNote, undercoverNote } = generateDistinctNotes(scripted);
+    expect(civilNote).toBe(0);
+    expect(undercoverNote).toBe(3);
+  });
+
+  it('re-draws the undercover note until it differs from the civil note', () => {
+    // civilNote: floor(0.5 * 21) = 10. Window [4, 16] (width 13).
+    // First draw (0.5 -> floor(6.5)+4 = 10) collides with civilNote; second draw (0.9 -> 15) is used instead.
+    const values = [0.5, 0.5, 0.9];
+    let i = 0;
+    const scripted = () => values[i++];
+    const { civilNote, undercoverNote } = generateDistinctNotes(scripted);
+    expect(civilNote).toBe(10);
+    expect(undercoverNote).toBe(15);
   });
 });
 

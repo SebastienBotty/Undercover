@@ -39,15 +39,19 @@ un DO séparé dupliquerait tout le socle commun pour rien.
   symétrique à `character: null` en mode classique). S'il est
   éliminé, il a une tentative pour deviner la note exacte des Civils ;
   s'il devine juste, il gagne seul.
-- `civilNote` et `undercoverNote` sont choisis explicitement par
-  l'hôte dans le lobby (deux champs numériques libres, 0-20 chacun) —
-  aucun calcul de proximité automatique côté serveur, contrairement à
-  la sélection de personnages du mode classique. Les deux valeurs
-  doivent être différentes (sinon la note ne renseigne plus rien sur
-  qui est l'Undercover) : rejeté avec une erreur typée
-  `CANNOT_START_GAME` sinon. Chaque valeur est clampée à [0, 20]
-  côté serveur avant d'être stockée (même pattern que
-  `resolveClueTimerSeconds`).
+- `civilNote` et `undercoverNote` sont tirés **au hasard** par le
+  serveur au lancement de la partie (`generateDistinctNotes`), jamais
+  choisis par l'hôte — contrairement à une première itération de ce
+  document qui envisageait une saisie manuelle, corrigée après coup.
+  `civilNote` est tiré uniformément dans [0, 20] ; `undercoverNote` est
+  ensuite tiré uniformément dans la fenêtre `[civilNote - 6, civilNote
+  + 6]` (bornée à [0, 20]), retiré jusqu'à obtenir une valeur distincte
+  de `civilNote` — les deux notes sont donc toujours différentes et
+  jamais éloignées de plus de `MAX_NOTE_GAP` (6) points, pour rester
+  comparables via les indices donnés en jeu. Les deux valeurs restent
+  exposées dans `room.settings` (donc visibles dans chaque snapshot)
+  une fois la
+  partie lancée, pour affichage éventuel côté client.
 
 Conditions de victoire : identiques au mode classique (majorité de
 Civils vivants élimine tous les Undercover/Mr. White ; Undercover
@@ -115,8 +119,8 @@ fonctionnement actuel d'une alarme Durable Object par salle.
 **`RoomSettings`** — nouveaux champs :
 ```ts
 mode: 'classic' | 'note'; // défaut 'classic'
-civilNote?: number;       // pertinent seulement si mode === 'note', clampé [0, 20]
-undercoverNote?: number;  // pertinent seulement si mode === 'note', clampé [0, 20]
+civilNote?: number;       // ignoré en entrée, généré au hasard par le serveur au START_GAME
+undercoverNote?: number;  // ignoré en entrée, généré au hasard par le serveur au START_GAME
 ```
 Les champs `themes` / `similarityLevel` / `animeSeries` restent
 présents dans le type mais sont ignorés par le serveur quand
@@ -161,10 +165,11 @@ les mêmes règles que `character`).
 
 - **`LobbyScreen`** : sélecteur de mode (Classique / Note) en haut des
   réglages hôte. Panneau conditionnel selon le mode : thèmes /
-  similarité / filtre animes (Classique) ou deux champs numériques
-  « Note Civils » / « Note Undercover », 0-20 chacun (Note). Mr. White
-  et Timer restent communs aux deux modes, affichés sous le panneau
-  spécifique au mode.
+  similarité / filtre animes (Classique) ou un simple texte informatif
+  précisant que les notes sont attribuées au hasard entre 0 et 20
+  (Note) — aucun contrôle hôte sur les valeurs. Mr. White et Timer
+  restent communs aux deux modes, affichés sous le panneau spécifique
+  au mode.
 - **`RoleRevealScreen`** / **`RoleBanner`** : variante Note affichant
   « Ta note : N/20 » à la place du nom de personnage, avec le même
   code couleur par rôle (rouge si Undercover). Mr. White ne voit
@@ -187,18 +192,29 @@ les mêmes règles que `character`).
 
 ## Erreurs & robustesse
 
-- `CANNOT_START_GAME` si `civilNote === undercoverNote` au moment du
-  `START_GAME` en mode Note.
-- `civilNote` / `undercoverNote` clampés à [0, 20] côté serveur avant
-  stockage, quelle que soit la valeur envoyée par l'hôte (même pattern
-  que `resolveClueTimerSeconds`).
+- `civilNote` / `undercoverNote` toujours générés distincts par
+  construction (`generateDistinctNotes` retire tant que les deux
+  valeurs sont égales) — pas de validation d'entrée côté hôte
+  nécessaire, contrairement à une première itération de ce document.
 - `SUBMIT_THEME` hors phase ou hors-tour : erreurs typées existantes
   (`WRONG_PHASE`, `NOT_YOUR_TURN`), renvoyées uniquement au client
-  fautif.
+  fautif. `SUBMIT_THEME` avec un texte vide ou uniquement des espaces :
+  erreur typée `EMPTY_THEME`, la salle reste en `THEME_SELECT` en
+  attente du même joueur (un thème vide bloquerait toute la manche
+  pour tout le monde, contrairement à un indice vide qui ne coûte qu'à
+  son auteur).
+- `SUBMIT_CLUE` / `SUBMIT_THEME` : le texte est tronqué à 200
+  caractères côté serveur avant stockage, pour éviter une croissance
+  non bornée de l'état persisté de la salle.
 - Reconnexion : `themeSetterId`, `currentTheme`, `themes` font partie
   du `RoomState` persisté et du snapshot ; une reconnexion en pleine
   phase `THEME_SELECT` retrouve l'état exact sans perturbation, comme
   le reste aujourd'hui.
+- `scheduleClueTimeout` supprime explicitement toute alarme Durable
+  Object en attente (`deleteAlarm`) quand `clueTimerEnabled` est faux,
+  pour éviter qu'une alarme héritée d'une phase précédente (ex. la
+  fenêtre de 60s laissée à Mr. White pour deviner) ne survive et se
+  déclenche plus tard sur une phase qui n'en a plus besoin.
 
 ## Tests
 
@@ -212,8 +228,9 @@ les mêmes règles que `character`).
   Note (indices texte libre, vote, élimination) ; thème non soumis à
   temps → passage au joueur suivant sans élimination (cascade sur
   plusieurs joueurs) ; victoire et défaite de Mr. White sur guess
-  numérique ; `START_GAME` rejeté si notes égales ; clamp des notes
-  hors [0, 20].
+  numérique ; notes toujours distinctes et dans [0, 20] quelle que
+  soit la partie ; thème vide rejeté ; texte tronqué à 200 caractères ;
+  aucune alarme périmée ne survit quand le timer est désactivé.
 - **Front** : bascule de mode dans `LobbyScreen` (panneaux
   conditionnels) ; `ThemeSelectScreen` (mon tour / tour d'un autre /
   countdown) ; champ numérique dans `EliminationScreen` ; révélation
@@ -226,9 +243,6 @@ les mêmes règles que `character`).
   « personnage qui correspond » restent en texte libre, jugés par les
   joueurs eux-mêmes ; aucune validation serveur du contenu des
   indices ou des thèmes.
-- Pas de calcul de proximité automatique entre `civilNote` et
-  `undercoverNote` (contrairement à la sélection de personnages du
-  mode classique) — l'hôte choisit les deux valeurs explicitement.
 - Pas de garde-fou contre un cycle infini de report de thème si tous
   les joueurs vivants laissent systématiquement expirer leur tour
   (cas pathologique jugé hors périmètre pour le MVP).
