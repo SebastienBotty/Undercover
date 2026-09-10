@@ -7,6 +7,7 @@ interface RoleRevealScreenProps {
   role: Role | null;
   character: string | null;
   characterImage?: string | null;
+  note?: number | null;
 }
 
 const ROLE_LABEL: Record<Role, string> = {
@@ -15,7 +16,7 @@ const ROLE_LABEL: Record<Role, string> = {
   mrwhite: 'Mr. White',
 };
 
-export function RoleRevealScreen({ role, character, characterImage }: RoleRevealScreenProps) {
+export function RoleRevealScreen({ role, character, characterImage, note }: RoleRevealScreenProps) {
   if (!role) return <p className="muted">Chargement de ton rôle...</p>;
 
   if (role === 'mrwhite') {
@@ -42,23 +43,29 @@ export function RoleRevealScreen({ role, character, characterImage }: RoleReveal
           {ROLE_LABEL[role]}
         </span>
       </h2>
-      <div className={`${styles.dossier} ${styles.dossierRow}`}>
-        {characterImage && (
-          // eslint-disable-next-line @next/next/no-img-element -- hotlinked from arbitrary external sources
-          <img
-            src={characterImage}
-            alt={character ?? 'Personnage'}
-            className={styles.photo}
-            onError={(e) => {
-              e.currentTarget.style.display = 'none';
-            }}
-          />
-        )}
-        <div className={styles.dossierText}>
-          <div className={styles.censorBar} />
-          <p className={styles.identity}>{character}</p>
+      {note != null ? (
+        <div className={styles.dossier}>
+          <p className={styles.identity}>Ta note : {note}/20</p>
         </div>
-      </div>
+      ) : (
+        <div className={`${styles.dossier} ${styles.dossierRow}`}>
+          {characterImage && (
+            // eslint-disable-next-line @next/next/no-img-element -- hotlinked from arbitrary external sources
+            <img
+              src={characterImage}
+              alt={character ?? 'Personnage'}
+              className={styles.photo}
+              onError={(e) => {
+                e.currentTarget.style.display = 'none';
+              }}
+            />
+          )}
+          <div className={styles.dossierText}>
+            <div className={styles.censorBar} />
+            <p className={styles.identity}>{character}</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

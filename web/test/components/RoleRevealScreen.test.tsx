@@ -30,4 +30,15 @@ describe('RoleRevealScreen', () => {
     render(<RoleRevealScreen role="civil" character="Goku" characterImage={null} />);
     expect(screen.queryByRole('img')).not.toBeInTheDocument();
   });
+
+  it('shows the note instead of the character when a note is provided', () => {
+    render(<RoleRevealScreen role="civil" character={null} note={14} />);
+    expect(screen.getByText(/ta note : 14\/20/i)).toBeInTheDocument();
+  });
+
+  it('colors the role red for an undercover even in note mode', () => {
+    render(<RoleRevealScreen role="undercover" character={null} note={10} />);
+    expect(screen.getByText(/ta note : 10\/20/i)).toBeInTheDocument();
+    expect(screen.getByText(/undercover/i)).toBeInTheDocument();
+  });
 });
