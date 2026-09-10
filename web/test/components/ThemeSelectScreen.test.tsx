@@ -45,7 +45,7 @@ describe('ThemeSelectScreen', () => {
   });
 
   it('shows the recap table with past rounds only, not the round in progress', () => {
-    render(
+    const { container } = render(
       <ThemeSelectScreen
         players={players}
         turnOrder={['p1', 'p2']}
@@ -58,7 +58,8 @@ describe('ThemeSelectScreen', () => {
       />
     );
     expect(screen.getByText('Manche 1')).toBeInTheDocument();
-    expect(screen.queryByText('Manche 2')).not.toBeInTheDocument();
+    const table = container.querySelector('table');
+    expect(table).not.toHaveTextContent('Manche 2');
   });
 
   it('shows a countdown derived from the turn deadline', () => {

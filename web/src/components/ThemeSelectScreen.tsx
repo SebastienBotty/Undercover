@@ -40,13 +40,14 @@ export function ThemeSelectScreen({ players, turnOrder, clues, themes, round, th
 
   return (
     <div>
-      {secondsLeft !== null && (
-        <div className={styles.header}>
+      <div className={styles.header}>
+        <span className="eyebrow">Manche {round}</span>
+        {secondsLeft !== null && (
           <span className={`${styles.timer}${secondsLeft <= URGENT_THRESHOLD_SECONDS ? ` ${styles.timerUrgent}` : ''}`}>
             ⏱ {secondsLeft}s
           </span>
-        </div>
-      )}
+        )}
+      </div>
       <h2>Thème</h2>
       {round > 1 && (
         <RoundRecapTable players={players} turnOrder={turnOrder} clues={clues} themes={themes} totalRounds={round - 1} />
