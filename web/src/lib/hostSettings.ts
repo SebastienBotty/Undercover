@@ -1,5 +1,7 @@
 export type SimilarityLevel = 'none' | 'close' | 'very_close';
 
+export type GameMode = 'classic' | 'note';
+
 export const CLUE_TIMER_MIN_SECONDS = 30;
 export const CLUE_TIMER_MAX_SECONDS = 90;
 
@@ -13,6 +15,12 @@ export interface RoomSettings {
   clueTimerEnabled: boolean;
   /** Clue submission window in seconds, between CLUE_TIMER_MIN_SECONDS and CLUE_TIMER_MAX_SECONDS. */
   clueTimerSeconds: number;
+  /** 'classic' (character-based) or 'note' (numeric-note-based). */
+  mode: GameMode;
+  /** Note given to Civils in 'note' mode, 0-20. */
+  civilNote: number;
+  /** Note given to Undercover in 'note' mode, 0-20. */
+  undercoverNote: number;
 }
 
 const STORAGE_KEY = 'undercover:hostSettings';
@@ -24,6 +32,9 @@ const DEFAULT_SETTINGS: RoomSettings = {
   animeSeries: [],
   clueTimerEnabled: true,
   clueTimerSeconds: 60,
+  mode: 'classic',
+  civilNote: 14,
+  undercoverNote: 10,
 };
 
 export function getStoredHostSettings(): RoomSettings {

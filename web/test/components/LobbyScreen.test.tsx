@@ -30,6 +30,9 @@ const baseSettings = {
   animeSeries: [],
   clueTimerEnabled: true,
   clueTimerSeconds: 60,
+  mode: "classic" as const,
+  civilNote: 14,
+  undercoverNote: 10,
 };
 
 beforeEach(() => {

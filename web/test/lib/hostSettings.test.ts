@@ -13,6 +13,9 @@ describe('host settings storage', () => {
       animeSeries: [],
       clueTimerEnabled: true,
       clueTimerSeconds: 60,
+      mode: 'classic',
+      civilNote: 14,
+      undercoverNote: 10,
     });
   });
 
@@ -24,6 +27,9 @@ describe('host settings storage', () => {
       animeSeries: ['one-piece', 'naruto'],
       clueTimerEnabled: false,
       clueTimerSeconds: 45,
+      mode: 'note',
+      civilNote: 16,
+      undercoverNote: 9,
     });
     expect(getStoredHostSettings()).toEqual({
       themes: ['anime', 'films'],
@@ -32,17 +38,20 @@ describe('host settings storage', () => {
       animeSeries: ['one-piece', 'naruto'],
       clueTimerEnabled: false,
       clueTimerSeconds: 45,
+      mode: 'note',
+      civilNote: 16,
+      undercoverNote: 9,
     });
   });
 
-  it('defaults animeSeries and the clue timer for settings stored before those fields existed', () => {
+  it('defaults mode and note fields for settings stored before those fields existed', () => {
     window.localStorage.setItem(
       'undercover:hostSettings',
       JSON.stringify({ themes: ['anime'], similarityLevel: 'close', mrWhiteEnabled: false })
     );
     const settings = getStoredHostSettings();
-    expect(settings.animeSeries).toEqual([]);
-    expect(settings.clueTimerEnabled).toBe(true);
-    expect(settings.clueTimerSeconds).toBe(60);
+    expect(settings.mode).toBe('classic');
+    expect(settings.civilNote).toBe(14);
+    expect(settings.undercoverNote).toBe(10);
   });
 });
