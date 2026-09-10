@@ -1,31 +1,31 @@
 export const NOTE_MIN = 0;
 export const NOTE_MAX = 20;
-/** Undercover's note is always within this many points of Civil's, so the two stay comparable. */
+/** Undercover's note is always at least this many points away from Civil's... */
+export const MIN_NOTE_GAP = 2;
+/** ...and at most this many, so the two stay comparable. */
 export const MAX_NOTE_GAP = 6;
-
-/** The note only carries deduction value if Civils and Undercover actually differ. */
-export function notesAreDistinct(civilNote: number, undercoverNote: number): boolean {
-  return civilNote !== undercoverNote;
-}
 
 function randomNote(random: () => number): number {
   return Math.floor(random() * (NOTE_MAX - NOTE_MIN + 1)) + NOTE_MIN;
 }
 
 /**
- * Picks two distinct random notes in [0, 20] for Civils and Undercover, at most MAX_NOTE_GAP
- * apart -- the host never chooses these directly. Civil's note is drawn first (uniform over the
- * full range); Undercover's is then drawn uniformly from the window around it, clamped to
- * [0, 20], re-drawing only on the rare exact collision.
+ * Picks two random notes in [0, 20] for Civils and Undercover, between MIN_NOTE_GAP and
+ * MAX_NOTE_GAP points apart -- the host never chooses these directly. Civil's note is drawn
+ * first (uniform over the full range); Undercover's is then drawn uniformly among the values at
+ * a valid distance from it. That set is never empty: even at the extremes (civilNote 0 or 20),
+ * [MIN_NOTE_GAP, MAX_NOTE_GAP] leaves several candidates within [0, 20].
  */
 export function generateDistinctNotes(random: () => number = Math.random): { civilNote: number; undercoverNote: number } {
   const civilNote = randomNote(random);
-  const low = Math.max(NOTE_MIN, civilNote - MAX_NOTE_GAP);
-  const high = Math.min(NOTE_MAX, civilNote + MAX_NOTE_GAP);
-  let undercoverNote = civilNote;
-  while (!notesAreDistinct(civilNote, undercoverNote)) {
-    undercoverNote = Math.floor(random() * (high - low + 1)) + low;
+  const candidates: number[] = [];
+  for (let candidate = NOTE_MIN; candidate <= NOTE_MAX; candidate++) {
+    const gap = Math.abs(candidate - civilNote);
+    if (gap >= MIN_NOTE_GAP && gap <= MAX_NOTE_GAP) {
+      candidates.push(candidate);
+    }
   }
+  const undercoverNote = candidates[Math.floor(random() * candidates.length)];
   return { civilNote, undercoverNote };
 }
 

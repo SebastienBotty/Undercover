@@ -234,7 +234,9 @@ describe('GameRoom game flow', () => {
 
     const { civilNote, undercoverNote } = snaps[0].settings;
     expect(civilNote).not.toBe(undercoverNote);
-    expect(Math.abs(civilNote - undercoverNote)).toBeLessThanOrEqual(6);
+    const gap = Math.abs(civilNote - undercoverNote);
+    expect(gap).toBeGreaterThanOrEqual(2);
+    expect(gap).toBeLessThanOrEqual(6);
     for (const note of [civilNote, undercoverNote]) {
       expect(note).toBeGreaterThanOrEqual(0);
       expect(note).toBeLessThanOrEqual(20);

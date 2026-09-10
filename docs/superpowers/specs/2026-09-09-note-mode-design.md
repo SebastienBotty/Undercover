@@ -44,13 +44,14 @@ un DO séparé dupliquerait tout le socle commun pour rien.
   choisis par l'hôte — contrairement à une première itération de ce
   document qui envisageait une saisie manuelle, corrigée après coup.
   `civilNote` est tiré uniformément dans [0, 20] ; `undercoverNote` est
-  ensuite tiré uniformément dans la fenêtre `[civilNote - 6, civilNote
-  + 6]` (bornée à [0, 20]), retiré jusqu'à obtenir une valeur distincte
-  de `civilNote` — les deux notes sont donc toujours différentes et
-  jamais éloignées de plus de `MAX_NOTE_GAP` (6) points, pour rester
-  comparables via les indices donnés en jeu. Les deux valeurs restent
-  exposées dans `room.settings` (donc visibles dans chaque snapshot)
-  une fois la
+  ensuite tiré uniformément parmi les valeurs de [0, 20] dont l'écart
+  avec `civilNote` est compris entre `MIN_NOTE_GAP` (2) et
+  `MAX_NOTE_GAP` (6) inclus — cet ensemble n'est jamais vide, même aux
+  extrêmes (`civilNote` à 0 ou 20). Les deux notes sont donc toujours
+  différentes, et leur écart reste à la fois assez grand pour rester
+  déductible et assez petit pour rester comparable via les indices
+  donnés en jeu. Les deux valeurs restent exposées dans
+  `room.settings` (donc visibles dans chaque snapshot) une fois la
   partie lancée, pour affichage éventuel côté client.
 
 Conditions de victoire : identiques au mode classique (majorité de
