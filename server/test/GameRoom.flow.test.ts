@@ -211,6 +211,77 @@ describe('GameRoom game flow', () => {
     expect(snapA.phase).toBe('ROLE_REVEAL');
   });
 
+  it('assigns notes instead of characters when starting a note-mode game', async () => {
+    const code = 'FLOW-NOTE-START';
+    const id = env.GAME_ROOM.idFromName(code);
+    const stub = env.GAME_ROOM.get(id);
+
+    const wsA = await joinPlayer(stub, code, 'Alice', 'a', true);
+    const wsB = await joinPlayer(stub, code, 'Bob', 'b', false, [wsA]);
+    const wsC = await joinPlayer(stub, code, 'Carl', 'c', false, [wsA, wsB]);
+    const sockets: Record<string, WebSocket> = { a: wsA, b: wsB, c: wsC };
+
+    const started = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+    wsA.send(
+      JSON.stringify({
+        type: 'START_GAME',
+        settings: { themes: [], similarityLevel: 'none', mrWhiteEnabled: false, mode: 'note', civilNote: 14, undercoverNote: 10 },
+      })
+    );
+    const snaps = await started;
+
+    for (const [playerId, snap] of Object.entries({ a: snaps[0], b: snaps[1], c: snaps[2] })) {
+      expect(snap.phase).toBe('ROLE_REVEAL');
+      expect(snap.settings.civilNote).toBe(14);
+      expect(snap.settings.undercoverNote).toBe(10);
+      const self = snap.players.find((p: any) => p.id === playerId);
+      expect(self.character).toBeNull();
+      expect([10, 14]).toContain(self.note);
+    }
+  });
+
+  it('rejects starting a note-mode game when both notes are equal', async () => {
+    const code = 'FLOW-NOTE-EQUAL';
+    const id = env.GAME_ROOM.idFromName(code);
+    const stub = env.GAME_ROOM.get(id);
+
+    const wsA = await joinPlayer(stub, code, 'Alice', 'a', true);
+    await joinPlayer(stub, code, 'Bob', 'b', false, [wsA]);
+    await joinPlayer(stub, code, 'Carl', 'c', false, [wsA]);
+
+    const errorPromise = waitForMessage(wsA);
+    wsA.send(
+      JSON.stringify({
+        type: 'START_GAME',
+        settings: { themes: [], similarityLevel: 'none', mrWhiteEnabled: false, mode: 'note', civilNote: 12, undercoverNote: 12 },
+      })
+    );
+    const errorMsg = await errorPromise;
+    expect(errorMsg).toMatchObject({ type: 'ERROR', code: 'CANNOT_START_GAME' });
+  });
+
+  it('clamps note-mode notes into [0, 20]', async () => {
+    const code = 'FLOW-NOTE-CLAMP';
+    const id = env.GAME_ROOM.idFromName(code);
+    const stub = env.GAME_ROOM.get(id);
+
+    const wsA = await joinPlayer(stub, code, 'Alice', 'a', true);
+    const wsB = await joinPlayer(stub, code, 'Bob', 'b', false, [wsA]);
+    const wsC = await joinPlayer(stub, code, 'Carl', 'c', false, [wsA, wsB]);
+    const sockets: Record<string, WebSocket> = { a: wsA, b: wsB, c: wsC };
+
+    const started = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+    wsA.send(
+      JSON.stringify({
+        type: 'START_GAME',
+        settings: { themes: [], similarityLevel: 'none', mrWhiteEnabled: false, mode: 'note', civilNote: -5, undercoverNote: 999 },
+      })
+    );
+    const [snapA] = await started;
+    expect(snapA.settings.civilNote).toBe(0);
+    expect(snapA.settings.undercoverNote).toBe(20);
+  });
+
   it('rejects SUBMIT_VOTE targeting a nonexistent player without recording the vote', async () => {
     const code = 'FLOW-4';
     const id = env.GAME_ROOM.idFromName(code);

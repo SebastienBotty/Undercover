@@ -7,6 +7,7 @@ import { nextAliveIndex, isClueRoundComplete, nextOddRound, resolveClueTimerSeco
 import { tallyVotes, checkWinCondition, checkMrWhiteGuess } from './game/voting';
 import { selectCharacterPair } from './characters/selectPair';
 import { CHARACTERS } from './characters/data';
+import { clampNote, notesAreDistinct } from './game/notes';
 
 const STORAGE_KEY = 'room';
 const CLUE_ROUNDS_PER_VOTE = 2;
@@ -131,40 +132,60 @@ export class GameRoom extends DurableObject {
     }
 
     const playerIds = room.players.map((p) => p.id);
-    let selection: ReturnType<typeof selectCharacterPair>;
+    const mode = settings.mode ?? 'classic';
+    let selection: ReturnType<typeof selectCharacterPair> | null = null;
     let roles: ReturnType<typeof assignRoles>;
+    let civilNote = 0;
+    let undercoverNote = 0;
     try {
-      // Both can throw for invalid combinations (e.g. too few characters in the selected
-      // themes, or a player/role-count combo that can't guarantee a civilian majority) — catch
-      // here so the host gets a typed error instead of an uncaught exception and a half-started room.
-      selection = selectCharacterPair(
-        CHARACTERS,
-        settings.themes,
-        settings.similarityLevel,
-        Math.random,
-        settings.animeSeries ?? []
-      );
+      // Both branches can throw for invalid combinations (e.g. too few characters in the
+      // selected themes, equal notes, or a player/role-count combo that can't guarantee a
+      // civilian majority) -- catch here so the host gets a typed error instead of an
+      // uncaught exception and a half-started room.
       roles = assignRoles(playerIds, settings);
+      if (mode === 'note') {
+        civilNote = clampNote(settings.civilNote);
+        undercoverNote = clampNote(settings.undercoverNote);
+        if (!notesAreDistinct(civilNote, undercoverNote)) {
+          throw new Error('Les notes des Civils et des Undercover doivent être différentes');
+        }
+      } else {
+        selection = selectCharacterPair(
+          CHARACTERS,
+          settings.themes,
+          settings.similarityLevel,
+          Math.random,
+          settings.animeSeries ?? []
+        );
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Impossible de démarrer la partie';
       this.sendErrorTo(playerId, 'CANNOT_START_GAME', message);
       return;
     }
-    const { civilCharacter, undercoverCharacter, levelUsed, wasRelaxed } = selection;
 
     for (const player of room.players) {
       const role = roles[player.id];
       player.role = role;
-      const assignedCharacter = role === 'civil' ? civilCharacter : role === 'undercover' ? undercoverCharacter : null;
-      player.character = assignedCharacter?.name ?? null;
-      player.characterImage = assignedCharacter?.image ?? null;
+      if (mode === 'note') {
+        player.note = role === 'civil' ? civilNote : role === 'undercover' ? undercoverNote : null;
+        player.character = null;
+        player.characterImage = null;
+      } else {
+        const assignedCharacter = role === 'civil' ? selection!.civilCharacter : role === 'undercover' ? selection!.undercoverCharacter : null;
+        player.character = assignedCharacter?.name ?? null;
+        player.characterImage = assignedCharacter?.image ?? null;
+        player.note = null;
+      }
     }
 
     room.settings = {
       ...settings,
-      similarityLevel: levelUsed,
+      mode,
+      similarityLevel: selection?.levelUsed ?? settings.similarityLevel,
       clueTimerEnabled: settings.clueTimerEnabled ?? true,
       clueTimerSeconds: resolveClueTimerSeconds(settings.clueTimerSeconds),
+      ...(mode === 'note' ? { civilNote, undercoverNote } : {}),
     };
     room.turnOrder = buildTurnOrder(playerIds);
     room.currentTurnIndex = 0;
@@ -174,16 +195,19 @@ export class GameRoom extends DurableObject {
     room.winner = null;
     room.lastEliminatedId = null;
     room.turnDeadline = null;
+    room.themeSetterId = null;
+    room.currentTheme = null;
+    room.themes = [];
     room.phase = 'ROLE_REVEAL';
 
     await this.saveRoom();
     this.broadcast();
 
-    if (wasRelaxed) {
+    if (selection?.wasRelaxed) {
       this.sendErrorTo(
         room.hostId,
         'SIMILARITY_RELAXED',
-        `Pas assez de personnages pour le niveau demandé, niveau "${levelUsed}" utilisé à la place.`
+        `Pas assez de personnages pour le niveau demandé, niveau "${selection.levelUsed}" utilisé à la place.`
       );
     }
 
