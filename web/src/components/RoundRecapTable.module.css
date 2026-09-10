@@ -63,3 +63,13 @@
 .check {
   font-weight: 700;
 }
+
+.themeSubtitle {
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  margin-top: 0.15rem;
+  white-space: normal;
+}

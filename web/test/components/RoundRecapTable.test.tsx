@@ -69,4 +69,24 @@ describe('RoundRecapTable', () => {
     );
     expect(screen.getByRole('button', { name: /bob/i })).toHaveTextContent('✓');
   });
+
+  it('shows the theme as a subtitle under the round header when provided', () => {
+    render(
+      <RoundRecapTable
+        players={players}
+        turnOrder={turnOrder}
+        clues={clues}
+        totalRounds={2}
+        themes={[{ round: 1, text: 'La force brute' }]}
+      />
+    );
+    expect(screen.getByText('La force brute')).toBeInTheDocument();
+  });
+
+  it('renders no theme subtitle for a round with no theme entry', () => {
+    render(
+      <RoundRecapTable players={players} turnOrder={turnOrder} clues={clues} totalRounds={1} themes={[]} />
+    );
+    expect(screen.getByText('Manche 1')).toBeInTheDocument();
+  });
 });

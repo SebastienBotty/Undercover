@@ -12,6 +12,11 @@ interface Clue {
   text: string;
 }
 
+interface ThemeEntry {
+  round: number;
+  text: string;
+}
+
 interface RoundRecapTableProps {
   players: Player[];
   turnOrder: string[];
@@ -21,6 +26,7 @@ interface RoundRecapTableProps {
   votableIds?: Set<string>;
   selectedId?: string | null;
   onVote?: (playerId: string) => void;
+  themes?: ThemeEntry[];
 }
 
 export function RoundRecapTable({
@@ -32,6 +38,7 @@ export function RoundRecapTable({
   votableIds,
   selectedId = null,
   onVote,
+  themes,
 }: RoundRecapTableProps) {
   const rounds = Array.from({ length: totalRounds }, (_, i) => i + 1);
 
@@ -42,11 +49,15 @@ export function RoundRecapTable({
           <tr>
             <th className={styles.flagCell} />
             <th className={styles.nameCell}>Joueur</th>
-            {rounds.map((r) => (
-              <th key={r} className={styles.clueCell}>
-                Manche {r}
-              </th>
-            ))}
+            {rounds.map((r) => {
+              const theme = themes?.find((t) => t.round === r);
+              return (
+                <th key={r} className={styles.clueCell}>
+                  Manche {r}
+                  {theme && <div className={styles.themeSubtitle}>{theme.text}</div>}
+                </th>
+              );
+            })}
           </tr>
         </thead>
         <tbody>
