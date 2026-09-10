@@ -10,8 +10,10 @@
 }
 
 .photo {
-  width: 1.75rem;
-  height: 1.75rem;
+  width: 7rem;
+  max-width: 30%;
+  aspect-ratio: 1;
+  height: auto;
   flex-shrink: 0;
   border-radius: 4px;
   border: 1px solid var(--panel-border-light);
