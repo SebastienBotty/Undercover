@@ -347,7 +347,7 @@ describe('GameApp', () => {
       })
     );
     render(<GameApp roomCode="ABCDE" pseudo="Seb" isHost={false} onLeaveRoom={() => {}} />);
-    expect(screen.getByText(/ta note : 14\/20/i)).toBeInTheDocument();
+    expect(screen.getByText('14/20')).toBeInTheDocument();
   });
 
   it('offers a leave-game button before the room state has even arrived', () => {

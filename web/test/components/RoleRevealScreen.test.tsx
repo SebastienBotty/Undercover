@@ -3,16 +3,16 @@ import { render, screen } from '@testing-library/react';
 import { RoleRevealScreen } from '@/components/RoleRevealScreen';
 
 describe('RoleRevealScreen', () => {
-  it('shows the character name for a civil', () => {
+  it('shows the character name for a civil, without ever saying "Civil"', () => {
     render(<RoleRevealScreen role="civil" character="Goku" />);
     expect(screen.getByText('Goku')).toBeInTheDocument();
-    expect(screen.getByText(/civil/i)).toBeInTheDocument();
+    expect(screen.queryByText(/civil/i)).not.toBeInTheDocument();
   });
 
-  it('shows the character name for an undercover', () => {
+  it('shows the character name for an undercover, without ever saying "Undercover"', () => {
     render(<RoleRevealScreen role="undercover" character="Vegeta" />);
     expect(screen.getByText('Vegeta')).toBeInTheDocument();
-    expect(screen.getByText(/undercover/i)).toBeInTheDocument();
+    expect(screen.queryByText(/undercover/i)).not.toBeInTheDocument();
   });
 
   it('shows a bluff message with no character for Mr. White', () => {
@@ -33,7 +33,7 @@ describe('RoleRevealScreen', () => {
 
   it('shows the note instead of the character when a note is provided', () => {
     render(<RoleRevealScreen role="civil" character={null} note={14} />);
-    expect(screen.getByText(/ta note : 14\/20/i)).toBeInTheDocument();
+    expect(screen.getByText('14/20')).toBeInTheDocument();
   });
 
   it('shows the source anime series in parentheses next to the character name', () => {
@@ -48,9 +48,9 @@ describe('RoleRevealScreen', () => {
     expect(screen.queryByText(/\(.*\)/)).not.toBeInTheDocument();
   });
 
-  it('colors the role red for an undercover even in note mode', () => {
+  it('shows only the note for an undercover in note mode too, never the role', () => {
     render(<RoleRevealScreen role="undercover" character={null} note={10} />);
-    expect(screen.getByText(/ta note : 10\/20/i)).toBeInTheDocument();
-    expect(screen.getByText(/undercover/i)).toBeInTheDocument();
+    expect(screen.getByText('10/20')).toBeInTheDocument();
+    expect(screen.queryByText(/undercover/i)).not.toBeInTheDocument();
   });
 });

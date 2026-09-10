@@ -11,12 +11,6 @@ interface RoleRevealScreenProps {
   note?: number | null;
 }
 
-const ROLE_LABEL: Record<Role, string> = {
-  civil: 'Civil',
-  undercover: 'Undercover',
-  mrwhite: 'Mr. White',
-};
-
 export function RoleRevealScreen({ role, character, characterImage, characterSeries, note }: RoleRevealScreenProps) {
   if (!role) return <p className="muted">Chargement de ton rôle...</p>;
 
@@ -35,18 +29,17 @@ export function RoleRevealScreen({ role, character, characterImage, characterSer
     );
   }
 
+  // Deliberately never says "Civil"/"Undercover" here (or anywhere in this component) -- only
+  // Mr. White is told their role outright, above, since they have no character to bluff with
+  // instead. Everyone else just sees their own character/note, with no hint of which side it
+  // puts them on; that's the whole point of the game.
   return (
     <div>
       <span className="eyebrow">Dossier confidentiel</span>
-      <h2>
-        Tu es{' '}
-        <span className={role === 'undercover' ? styles.roleUndercover : undefined}>
-          {ROLE_LABEL[role]}
-        </span>
-      </h2>
+      <h2>{note != null ? 'Ta note' : 'Ton personnage'}</h2>
       {note != null ? (
         <div className={styles.dossier}>
-          <p className={styles.identity}>Ta note : {note}/20</p>
+          <p className={styles.identity}>{note}/20</p>
         </div>
       ) : (
         <div className={`${styles.dossier} ${styles.dossierRow}`}>

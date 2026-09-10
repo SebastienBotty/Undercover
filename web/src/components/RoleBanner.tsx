@@ -11,14 +11,20 @@ interface RoleBannerProps {
   note?: number | null;
 }
 
-const ROLE_LABEL: Record<Role, string> = {
-  civil: 'Civil',
-  undercover: 'Undercover',
-  mrwhite: 'Mr. White',
-};
-
 export function RoleBanner({ role, character, characterImage, characterSeries, note }: RoleBannerProps) {
   if (!role) return null;
+
+  // Deliberately never shows "Civil"/"Undercover" (or any styling that would give it away) --
+  // only Mr. White is told their role outright, since they have no character to bluff with
+  // instead. Seeing only your own character/note, with no hint of which side it puts you on, is
+  // the whole point of the game.
+  if (role === 'mrwhite') {
+    return (
+      <div className={styles.banner}>
+        <span className={styles.word}>Tu es Mr. White</span>
+      </div>
+    );
+  }
 
   return (
     <div className={styles.banner}>
@@ -33,16 +39,13 @@ export function RoleBanner({ role, character, characterImage, characterSeries, n
           }}
         />
       )}
-      <span className="muted">Ton rôle : </span>
-      <span className={role === 'undercover' ? styles.undercover : styles.role}>{ROLE_LABEL[role]}</span>
       {character && (
         <span className={styles.word}>
-          {' '}
-          — {character}
+          {character}
           {characterSeries && <span className={styles.series}> ({characterSeries})</span>}
         </span>
       )}
-      {note != null && <span className={styles.word}> — {note}/20</span>}
+      {note != null && <span className={styles.word}>{note}/20</span>}
     </div>
   );
 }

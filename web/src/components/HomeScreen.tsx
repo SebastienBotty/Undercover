@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { usePseudo } from '@/lib/usePseudo';
+import styles from './HomeScreen.module.css';
 
 interface HomeScreenProps {
   onEnterRoom: (code: string, pseudo: string, isHost: boolean) => void;
@@ -18,7 +19,14 @@ export function HomeScreen({ onEnterRoom, notice }: HomeScreenProps) {
     return (
       <main className="shell">
         <div className="card">
-          <span className="eyebrow">Undercover</span>
+          <span className="eyebrow">Jeu de société en ligne</span>
+          <h1 className={styles.title}>Undercover</h1>
+          <p className={`muted ${styles.pitch}`}>
+            Chacun reçoit un personnage secret. Un ou plusieurs joueurs sont des <strong>Undercover</strong> avec
+            un personnage légèrement différent — donnez des indices à tour de rôle, puis votez pour les démasquer
+            avant qu&apos;ils ne l&apos;emportent. Gratuit, sans inscription, jouable direct dans le navigateur.
+          </p>
+          <hr className="divider" />
           <h2>Qui es-tu ce soir ?</h2>
           <form
             className="field"

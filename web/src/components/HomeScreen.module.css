@@ -1,0 +1,9 @@
+.title {
+  font-size: 2.4rem;
+  color: var(--accent-strong);
+  margin: 0.25rem 0 0.75rem;
+}
+
+.pitch {
+  margin-bottom: 0.5rem;
+}

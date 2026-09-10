@@ -23,4 +23,21 @@ describe('RoleBanner', () => {
     render(<RoleBanner role="civil" character={null} note={14} />);
     expect(screen.getByText(/14\/20/)).toBeInTheDocument();
   });
+
+  it('never says "Civil", so a player can\'t tell their own role at a glance', () => {
+    render(<RoleBanner role="civil" character="Goku" />);
+    expect(screen.getByText(/goku/i)).toBeInTheDocument();
+    expect(screen.queryByText(/civil/i)).not.toBeInTheDocument();
+  });
+
+  it('never says "Undercover" either', () => {
+    render(<RoleBanner role="undercover" character="Vegeta" />);
+    expect(screen.getByText(/vegeta/i)).toBeInTheDocument();
+    expect(screen.queryByText(/undercover/i)).not.toBeInTheDocument();
+  });
+
+  it('does tell Mr. White their role outright, since they have no character to see instead', () => {
+    render(<RoleBanner role="mrwhite" character={null} />);
+    expect(screen.getByText(/mr\. white/i)).toBeInTheDocument();
+  });
 });
