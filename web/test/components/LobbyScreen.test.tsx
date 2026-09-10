@@ -53,6 +53,8 @@ describe("LobbyScreen", () => {
       <LobbyScreen
         isHost={false}
         code="ABCDE"
+        selfId="self"
+        onKickPlayer={() => {}}
         players={players}
         settings={baseSettings}
         onStart={() => {}}
@@ -68,6 +70,8 @@ describe("LobbyScreen", () => {
       <LobbyScreen
         isHost={true}
         code="ABCDE"
+        selfId="self"
+        onKickPlayer={() => {}}
         players={players}
         settings={baseSettings}
         onStart={() => {}}
@@ -82,6 +86,8 @@ describe("LobbyScreen", () => {
       <LobbyScreen
         isHost={true}
         code="ABCDE"
+        selfId="self"
+        onKickPlayer={() => {}}
         players={players}
         settings={baseSettings}
         onStart={() => {}}
@@ -99,6 +105,8 @@ describe("LobbyScreen", () => {
       <LobbyScreen
         isHost={false}
         code="ABCDE"
+        selfId="self"
+        onKickPlayer={() => {}}
         players={players}
         settings={baseSettings}
         onStart={() => {}}
@@ -114,6 +122,8 @@ describe("LobbyScreen", () => {
       <LobbyScreen
         isHost={false}
         code="ABCDE"
+        selfId="self"
+        onKickPlayer={() => {}}
         players={players}
         settings={baseSettings}
         onStart={() => {}}
@@ -135,6 +145,8 @@ describe("LobbyScreen", () => {
       <LobbyScreen
         isHost={true}
         code="ABCDE"
+        selfId="self"
+        onKickPlayer={() => {}}
         players={players}
         settings={baseSettings}
         onStart={() => {}}
@@ -154,6 +166,8 @@ describe("LobbyScreen", () => {
       <LobbyScreen
         isHost={true}
         code="ABCDE"
+        selfId="self"
+        onKickPlayer={() => {}}
         players={players}
         settings={baseSettings}
         onStart={() => {}}
@@ -171,6 +185,8 @@ describe("LobbyScreen", () => {
       <LobbyScreen
         isHost={true}
         code="ABCDE"
+        selfId="self"
+        onKickPlayer={() => {}}
         players={fewPlayers}
         settings={baseSettings}
         onStart={() => {}}
@@ -186,6 +202,8 @@ describe("LobbyScreen", () => {
       <LobbyScreen
         isHost={true}
         code="ABCDE"
+        selfId="self"
+        onKickPlayer={() => {}}
         players={players}
         settings={baseSettings}
         onStart={() => {}}
@@ -202,6 +220,8 @@ describe("LobbyScreen", () => {
       <LobbyScreen
         isHost={true}
         code="ABCDE"
+        selfId="self"
+        onKickPlayer={() => {}}
         players={players.slice(0, 2)}
         settings={{ ...baseSettings, mrWhiteEnabled: true }}
         onStart={() => {}}
@@ -219,6 +239,8 @@ describe("LobbyScreen", () => {
       <LobbyScreen
         isHost={true}
         code="ABCDE"
+        selfId="self"
+        onKickPlayer={() => {}}
         players={players}
         settings={baseSettings}
         onStart={() => {}}
@@ -239,6 +261,8 @@ describe("LobbyScreen", () => {
       <LobbyScreen
         isHost={true}
         code="ABCDE"
+        selfId="self"
+        onKickPlayer={() => {}}
         players={players}
         settings={baseSettings}
         onStart={() => {}}
@@ -257,6 +281,8 @@ describe("LobbyScreen", () => {
       <LobbyScreen
         isHost={false}
         code="ABCDE"
+        selfId="self"
+        onKickPlayer={() => {}}
         players={players}
         settings={{ ...baseSettings, themes: ["anime"] }}
         onStart={() => {}}
@@ -275,6 +301,8 @@ describe("LobbyScreen", () => {
       <LobbyScreen
         isHost={true}
         code="ABCDE"
+        selfId="self"
+        onKickPlayer={() => {}}
         players={players}
         settings={baseSettings}
         onStart={() => {}}
@@ -298,6 +326,8 @@ describe("LobbyScreen", () => {
       <LobbyScreen
         isHost={true}
         code="ABCDE"
+        selfId="self"
+        onKickPlayer={() => {}}
         players={players}
         settings={baseSettings}
         onStart={() => {}}
@@ -317,6 +347,8 @@ describe("LobbyScreen", () => {
       <LobbyScreen
         isHost={true}
         code="ABCDE"
+        selfId="self"
+        onKickPlayer={() => {}}
         players={players}
         settings={baseSettings}
         onStart={() => {}}
@@ -331,6 +363,8 @@ describe("LobbyScreen", () => {
       <LobbyScreen
         isHost={true}
         code="ABCDE"
+        selfId="self"
+        onKickPlayer={() => {}}
         players={players}
         settings={{ ...baseSettings, clueTimerEnabled: false, voteTimerEnabled: false }}
         onStart={() => {}}
@@ -347,6 +381,8 @@ describe("LobbyScreen", () => {
       <LobbyScreen
         isHost={true}
         code="ABCDE"
+        selfId="self"
+        onKickPlayer={() => {}}
         players={players}
         settings={baseSettings}
         onStart={() => {}}
@@ -372,6 +408,8 @@ describe("LobbyScreen", () => {
       <LobbyScreen
         isHost={true}
         code="ABCDE"
+        selfId="self"
+        onKickPlayer={() => {}}
         players={players}
         settings={baseSettings}
         onStart={() => {}}
@@ -397,6 +435,8 @@ describe("LobbyScreen", () => {
       <LobbyScreen
         isHost={true}
         code="ABCDE"
+        selfId="self"
+        onKickPlayer={() => {}}
         players={players}
         settings={{ ...baseSettings, themes: ["anime"] }}
         onStart={onStart}
@@ -412,6 +452,8 @@ describe("LobbyScreen", () => {
       <LobbyScreen
         isHost={true}
         code="ABCDE"
+        selfId="self"
+        onKickPlayer={() => {}}
         players={players}
         settings={baseSettings}
         onStart={() => {}}
@@ -430,6 +472,8 @@ describe("LobbyScreen", () => {
       <LobbyScreen
         isHost={true}
         code="ABCDE"
+        selfId="self"
+        onKickPlayer={() => {}}
         players={players}
         settings={baseSettings}
         onStart={() => {}}
@@ -443,6 +487,8 @@ describe("LobbyScreen", () => {
       <LobbyScreen
         isHost={true}
         code="ABCDE"
+        selfId="self"
+        onKickPlayer={() => {}}
         players={players}
         settings={{ ...baseSettings, mode: "note" }}
         onStart={() => {}}
@@ -452,5 +498,56 @@ describe("LobbyScreen", () => {
     expect(screen.queryByText(/thèmes/i)).not.toBeInTheDocument();
     expect(screen.getByText(/attribuées au hasard/i)).toBeInTheDocument();
     expect(screen.queryByLabelText(/note des civils/i)).not.toBeInTheDocument();
+  });
+
+  it("lets the host kick a player from the roster immediately, with no confirmation", () => {
+    const onKickPlayer = vi.fn();
+    render(
+      <LobbyScreen
+        isHost={true}
+        code="ABCDE"
+        selfId="self"
+        onKickPlayer={onKickPlayer}
+        players={players}
+        settings={baseSettings}
+        onStart={() => {}}
+        onSettingsChange={() => {}}
+      />,
+    );
+    fireEvent.click(screen.getAllByRole("button", { name: /exclure/i })[0]);
+    expect(onKickPlayer).toHaveBeenCalledWith("p1");
+  });
+
+  it("gives non-hosts no kick button at all", () => {
+    render(
+      <LobbyScreen
+        isHost={false}
+        code="ABCDE"
+        selfId="self"
+        onKickPlayer={() => {}}
+        players={players}
+        settings={baseSettings}
+        onStart={() => {}}
+        onSettingsChange={() => {}}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: /exclure/i })).not.toBeInTheDocument();
+  });
+
+  it("gives the host no kick button on their own row", () => {
+    render(
+      <LobbyScreen
+        isHost={true}
+        code="ABCDE"
+        selfId="p1"
+        onKickPlayer={() => {}}
+        players={players}
+        settings={baseSettings}
+        onStart={() => {}}
+        onSettingsChange={() => {}}
+      />,
+    );
+    // 5 players, host is p1 (Alice) -- only the other 4 get a kick button.
+    expect(screen.getAllByRole("button", { name: /exclure/i })).toHaveLength(4);
   });
 });

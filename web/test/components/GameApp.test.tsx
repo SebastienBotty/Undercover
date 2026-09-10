@@ -197,7 +197,7 @@ describe('GameApp', () => {
       })
     );
     render(<GameApp roomCode="ABCDE" pseudo="Seb" isHost={false} onLeaveRoom={onLeaveRoom} />);
-    fireEvent.click(screen.getByRole('button', { name: /quitter/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^quitter$/i }));
     expect(onLeaveRoom).toHaveBeenCalled();
   });
 
@@ -253,6 +253,85 @@ describe('GameApp', () => {
     expect(send).toHaveBeenCalledWith({ type: 'SUBMIT_THEME', text: 'La force' });
   });
 
+  it('leaves the room with the kicked notice instead of showing a plain alert when kicked', () => {
+    const onLeaveRoom = vi.fn();
+    vi.spyOn(socketModule, 'useGameSocket').mockReturnValue(
+      mockSocket({ status: 'open', lastMessage: { type: 'ERROR', code: 'KICKED', message: "L'hôte t'a exclu de la salle" } })
+    );
+    render(<GameApp roomCode="ABCDE" pseudo="Seb" isHost={false} onLeaveRoom={onLeaveRoom} />);
+    expect(onLeaveRoom).toHaveBeenCalledWith("L'hôte t'a exclu de la salle");
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('lets the host kick a player during an active phase via the host player controls, with no confirmation', () => {
+    window.localStorage.setItem('undercover:clientId', 'p1');
+    const send = vi.fn();
+    vi.spyOn(socketModule, 'useGameSocket').mockReturnValue(
+      mockSocket({
+        status: 'open',
+        send,
+        lastMessage: {
+          type: 'ROOM_STATE',
+          phase: 'CLUE_ROUND',
+          hostId: 'p1',
+          turnOrder: ['p1', 'p2'],
+          currentTurnIndex: 0,
+          clues: [],
+          round: 1,
+          players: [
+            { id: 'p1', name: 'Alice', alive: true, connected: true },
+            { id: 'p2', name: 'Bob', alive: true, connected: true },
+          ],
+        },
+      })
+    );
+    render(<GameApp roomCode="ABCDE" pseudo="Alice" isHost={false} onLeaveRoom={() => {}} />);
+    fireEvent.click(screen.getByRole('button', { name: /gérer les joueurs/i }));
+    fireEvent.click(screen.getByRole('button', { name: /exclure bob/i }));
+    expect(send).toHaveBeenCalledWith({ type: 'KICK_PLAYER', playerId: 'p2' });
+  });
+
+  it('gives non-hosts no access to the host player controls', () => {
+    window.localStorage.setItem('undercover:clientId', 'p2');
+    vi.spyOn(socketModule, 'useGameSocket').mockReturnValue(
+      mockSocket({
+        status: 'open',
+        lastMessage: {
+          type: 'ROOM_STATE',
+          phase: 'CLUE_ROUND',
+          hostId: 'p1',
+          turnOrder: ['p1', 'p2'],
+          currentTurnIndex: 0,
+          clues: [],
+          round: 1,
+          players: [
+            { id: 'p1', name: 'Alice', alive: true, connected: true },
+            { id: 'p2', name: 'Bob', alive: true, connected: true },
+          ],
+        },
+      })
+    );
+    render(<GameApp roomCode="ABCDE" pseudo="Bob" isHost={false} onLeaveRoom={() => {}} />);
+    expect(screen.queryByRole('button', { name: /gérer les joueurs/i })).not.toBeInTheDocument();
+  });
+
+  it('does not show the host player controls in the lobby (it has its own kick buttons)', () => {
+    window.localStorage.setItem('undercover:clientId', 'p1');
+    vi.spyOn(socketModule, 'useGameSocket').mockReturnValue(
+      mockSocket({
+        status: 'open',
+        lastMessage: {
+          type: 'ROOM_STATE',
+          phase: 'LOBBY',
+          hostId: 'p1',
+          players: [{ id: 'p1', name: 'Alice', alive: true, connected: true }],
+        },
+      })
+    );
+    render(<GameApp roomCode="ABCDE" pseudo="Alice" isHost={false} onLeaveRoom={() => {}} />);
+    expect(screen.queryByRole('button', { name: /gérer les joueurs/i })).not.toBeInTheDocument();
+  });
+
   it('shows the note instead of the character during ROLE_REVEAL in note mode', () => {
     window.localStorage.setItem('undercover:clientId', 'c1');
     vi.spyOn(socketModule, 'useGameSocket').mockReturnValue(
@@ -269,5 +348,84 @@ describe('GameApp', () => {
     );
     render(<GameApp roomCode="ABCDE" pseudo="Seb" isHost={false} onLeaveRoom={() => {}} />);
     expect(screen.getByText(/ta note : 14\/20/i)).toBeInTheDocument();
+  });
+
+  it('offers a leave-game button before the room state has even arrived', () => {
+    vi.spyOn(socketModule, 'useGameSocket').mockReturnValue(mockSocket({ status: 'connecting' }));
+    const onLeaveRoom = vi.fn();
+    render(<GameApp roomCode="ABCDE" pseudo="Seb" isHost={false} onLeaveRoom={onLeaveRoom} />);
+    fireEvent.click(screen.getByRole('button', { name: /quitter la partie/i }));
+    expect(onLeaveRoom).toHaveBeenCalledWith();
+  });
+
+  it('offers every player (not just the host) a leave-game button during an active phase, sending LEAVE_ROOM before leaving', () => {
+    window.localStorage.setItem('undercover:clientId', 'p2');
+    const onLeaveRoom = vi.fn();
+    const send = vi.fn();
+    vi.spyOn(socketModule, 'useGameSocket').mockReturnValue(
+      mockSocket({
+        status: 'open',
+        send,
+        lastMessage: {
+          type: 'ROOM_STATE',
+          phase: 'CLUE_ROUND',
+          hostId: 'p1',
+          turnOrder: ['p1', 'p2'],
+          currentTurnIndex: 0,
+          clues: [],
+          round: 1,
+          players: [
+            { id: 'p1', name: 'Alice', alive: true, connected: true },
+            { id: 'p2', name: 'Bob', alive: true, connected: true },
+          ],
+        },
+      })
+    );
+    render(<GameApp roomCode="ABCDE" pseudo="Bob" isHost={false} onLeaveRoom={onLeaveRoom} />);
+    fireEvent.click(screen.getByRole('button', { name: /quitter la partie/i }));
+    expect(send).toHaveBeenCalledWith({ type: 'LEAVE_ROOM' });
+    expect(onLeaveRoom).toHaveBeenCalledWith();
+  });
+
+  it('does not try to send LEAVE_ROOM when the socket is not open yet', () => {
+    const onLeaveRoom = vi.fn();
+    const send = vi.fn();
+    vi.spyOn(socketModule, 'useGameSocket').mockReturnValue(mockSocket({ status: 'connecting', send }));
+    render(<GameApp roomCode="ABCDE" pseudo="Seb" isHost={false} onLeaveRoom={onLeaveRoom} />);
+    fireEvent.click(screen.getByRole('button', { name: /quitter la partie/i }));
+    expect(send).not.toHaveBeenCalled();
+    expect(onLeaveRoom).toHaveBeenCalledWith();
+  });
+
+  it('sends LEAVE_ROOM before leaving from the end screen too', () => {
+    window.localStorage.setItem('undercover:clientId', 'p1');
+    const onLeaveRoom = vi.fn();
+    const send = vi.fn();
+    vi.spyOn(socketModule, 'useGameSocket').mockReturnValue(
+      mockSocket({
+        status: 'open',
+        send,
+        lastMessage: {
+          type: 'ROOM_STATE',
+          phase: 'END',
+          winner: 'civil',
+          players: [{ id: 'p1', name: 'Alice', role: 'civil', character: 'Goku' }],
+        },
+      })
+    );
+    render(<GameApp roomCode="ABCDE" pseudo="Seb" isHost={false} onLeaveRoom={onLeaveRoom} />);
+    fireEvent.click(screen.getByRole('button', { name: /^quitter$/i }));
+    expect(send).toHaveBeenCalledWith({ type: 'LEAVE_ROOM' });
+    expect(onLeaveRoom).toHaveBeenCalledWith();
+  });
+
+  it('leaves the room when a rejoin attempt is rejected as BANNED (host kick or a past voluntary leave)', () => {
+    const onLeaveRoom = vi.fn();
+    vi.spyOn(socketModule, 'useGameSocket').mockReturnValue(
+      mockSocket({ status: 'open', lastMessage: { type: 'ERROR', code: 'BANNED', message: 'Tu ne peux pas rejoindre cette salle' } })
+    );
+    render(<GameApp roomCode="ABCDE" pseudo="Seb" isHost={false} onLeaveRoom={onLeaveRoom} />);
+    expect(onLeaveRoom).toHaveBeenCalledWith('Tu ne peux pas rejoindre cette salle');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 });

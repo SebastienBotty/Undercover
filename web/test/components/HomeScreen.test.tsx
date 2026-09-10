@@ -62,4 +62,18 @@ describe('HomeScreen', () => {
     fireEvent.click(screen.getByRole('button', { name: /rejoindre/i }));
     expect(onEnterRoom).toHaveBeenCalledWith('ABCDE', 'Seb', false);
   });
+
+  it('shows a notice (e.g. after being kicked) once a pseudo is already set', () => {
+    render(<HomeScreen onEnterRoom={() => {}} notice="L'hôte t'a exclu de la salle" />);
+    fireEvent.change(screen.getByLabelText(/pseudo/i), { target: { value: 'Seb' } });
+    fireEvent.click(screen.getByRole('button', { name: /continuer/i }));
+    expect(screen.getByRole('alert')).toHaveTextContent("L'hôte t'a exclu de la salle");
+  });
+
+  it('shows no notice when none is provided', () => {
+    render(<HomeScreen onEnterRoom={() => {}} />);
+    fireEvent.change(screen.getByLabelText(/pseudo/i), { target: { value: 'Seb' } });
+    fireEvent.click(screen.getByRole('button', { name: /continuer/i }));
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
 });

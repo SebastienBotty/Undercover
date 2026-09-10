@@ -11,6 +11,8 @@ import { EliminationScreen } from '@/components/EliminationScreen';
 import { EndScreen } from '@/components/EndScreen';
 import { RoleBanner } from '@/components/RoleBanner';
 import { RoomCodeBadge } from '@/components/RoomCodeBadge';
+import { LeaveGameButton } from '@/components/LeaveGameButton';
+import { HostPlayerControls } from '@/components/HostPlayerControls';
 import { getStoredHostSettings, storeHostSettings, normalizeSettings, type RoomSettings } from '@/lib/hostSettings';
 
 const PHASES_WITH_ROLE_BANNER = ['THEME_SELECT', 'CLUE_ROUND', 'VOTE', 'ELIMINATION'];
@@ -19,7 +21,7 @@ interface GameAppProps {
   roomCode: string;
   pseudo: string;
   isHost: boolean;
-  onLeaveRoom: () => void;
+  onLeaveRoom: (notice?: string) => void;
 }
 
 export function GameApp({ roomCode, pseudo, isHost, onLeaveRoom }: GameAppProps) {
@@ -47,14 +49,32 @@ export function GameApp({ roomCode, pseudo, isHost, onLeaveRoom }: GameAppProps)
       setRoomState(lastMessage);
       setErrorMessage(null);
     } else if (lastMessage.type === 'ERROR') {
+      if (lastMessage.code === 'KICKED' || lastMessage.code === 'BANNED') {
+        // KICKED: the server is about to close this socket. BANNED: a join/rejoin attempt was
+        // flatly rejected (host kick or the player's own past voluntary leave). Either way, leave
+        // the room outright instead of flashing an alert over a screen the player can't act on.
+        onLeaveRoom(lastMessage.message);
+        return;
+      }
       setErrorMessage(lastMessage.message);
     }
-  }, [lastMessage]);
+  }, [lastMessage, onLeaveRoom]);
+
+  // Sent right before actually leaving, so the server can tell a deliberate departure apart from
+  // merely losing connection -- only a deliberate leave permanently bans the client id from
+  // rejoining (see server/src/GameRoom.ts's handleLeaveRoom).
+  function handleLeaveVoluntarily() {
+    if (status === 'open') {
+      send({ type: 'LEAVE_ROOM' });
+    }
+    onLeaveRoom();
+  }
 
   if (status === 'connecting' || status === 'idle') {
     return (
       <main className="shell">
         <RoomCodeBadge code={roomCode} />
+        <LeaveGameButton onLeave={handleLeaveVoluntarily} />
         <div className="card">
           <span className="eyebrow">Undercover</span>
           <p className="muted">Connexion à la salle {roomCode}...</p>
@@ -86,8 +106,10 @@ export function GameApp({ roomCode, pseudo, isHost, onLeaveRoom }: GameAppProps)
           code={roomState.code ?? roomCode}
           players={roomState.players}
           settings={lobbySettings}
+          selfId={getOrCreateClientId()}
           onStart={handleStart}
           onSettingsChange={handleSettingsChange}
+          onKickPlayer={(playerId) => send({ type: 'KICK_PLAYER', playerId })}
         />
       );
     }
@@ -170,7 +192,7 @@ export function GameApp({ roomCode, pseudo, isHost, onLeaveRoom }: GameAppProps)
           players={roomState.players}
           isHost={roomState.hostId === getOrCreateClientId()}
           onRestart={() => send({ type: 'RESTART_GAME' })}
-          onLeave={onLeaveRoom}
+          onLeave={handleLeaveVoluntarily}
         />
       );
     }
@@ -180,11 +202,19 @@ export function GameApp({ roomCode, pseudo, isHost, onLeaveRoom }: GameAppProps)
   return (
     <main className="shell">
       <RoomCodeBadge code={roomState?.code ?? roomCode} />
+      <LeaveGameButton onLeave={handleLeaveVoluntarily} />
       <div className={`card${roomState?.phase === 'LOBBY' ? ' cardWide' : ''}`}>
         {errorMessage && (
           <p role="alert" className="alert">
             {errorMessage}
           </p>
+        )}
+        {amHost && roomState && roomState.phase !== 'LOBBY' && roomState.phase !== 'END' && (
+          <HostPlayerControls
+            players={roomState.players}
+            selfId={getOrCreateClientId()}
+            onKickPlayer={(playerId) => send({ type: 'KICK_PLAYER', playerId })}
+          />
         )}
         {roomState && PHASES_WITH_ROLE_BANNER.includes(roomState.phase) && (
           <RoleBanner

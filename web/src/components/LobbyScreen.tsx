@@ -28,8 +28,10 @@ interface LobbyScreenProps {
   code: string;
   players: Player[];
   settings: RoomSettings;
+  selfId: string;
   onStart: () => void;
   onSettingsChange: (settings: RoomSettings) => void;
+  onKickPlayer: (playerId: string) => void;
 }
 
 export function LobbyScreen({
@@ -37,8 +39,10 @@ export function LobbyScreen({
   code,
   players,
   settings,
+  selfId,
   onStart,
   onSettingsChange,
+  onKickPlayer,
 }: LobbyScreenProps) {
   const { themes, error: catalogError } = useThemeCatalog();
   // Purely local UI state -- revealing the per-timer controls isn't itself a game setting.
@@ -317,7 +321,19 @@ export function LobbyScreen({
             {players.map((p) => (
               <li key={p.id} className={`rosterItem${!p.connected ? " rosterItemDim" : ""}`}>
                 <span>{p.name}</span>
-                {!p.connected && <span className="stamp">Déconnecté</span>}
+                <span className={styles.rosterItemTrailing}>
+                  {!p.connected && <span className="stamp">Déconnecté</span>}
+                  {isHost && p.id !== selfId && (
+                    <button
+                      type="button"
+                      aria-label={`Exclure ${p.name}`}
+                      className={`btnGhost btn ${styles.kickButton}`}
+                      onClick={() => onKickPlayer(p.id)}
+                    >
+                      Exclure
+                    </button>
+                  )}
+                </span>
               </li>
             ))}
           </ul>

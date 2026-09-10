@@ -103,6 +103,24 @@
   font-size: 0.8rem;
 }
 
+.rosterItemTrailing {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.kickButton {
+  padding: 0.2rem 0.55rem;
+  font-size: 0.75rem;
+  color: var(--danger-strong);
+  border-color: var(--danger-strong);
+}
+
+.kickButton:hover {
+  color: #fff;
+  background: var(--danger-strong);
+}
+
 .roomCodeButton {
   background: none;
   border: none;

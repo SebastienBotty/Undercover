@@ -4,9 +4,11 @@ import { usePseudo } from '@/lib/usePseudo';
 
 interface HomeScreenProps {
   onEnterRoom: (code: string, pseudo: string, isHost: boolean) => void;
+  /** Shown once, e.g. right after being kicked from a room -- purely informational. */
+  notice?: string | null;
 }
 
-export function HomeScreen({ onEnterRoom }: HomeScreenProps) {
+export function HomeScreen({ onEnterRoom, notice }: HomeScreenProps) {
   const { pseudo, setPseudo } = usePseudo();
   const [draftPseudo, setDraftPseudo] = useState(pseudo);
   const [joinCode, setJoinCode] = useState('');
@@ -65,6 +67,12 @@ export function HomeScreen({ onEnterRoom }: HomeScreenProps) {
         <p className="muted">
           <button className="btnGhost btn" onClick={() => setPseudo('')}>changer de pseudo</button>
         </p>
+
+        {notice && (
+          <p role="alert" className="alert">
+            {notice}
+          </p>
+        )}
 
         <button onClick={handleCreateRoom} className="btn btnBlock">
           Créer une salle

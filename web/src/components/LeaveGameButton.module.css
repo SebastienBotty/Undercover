@@ -1,0 +1,21 @@
+.button {
+  position: fixed;
+  top: 0.75rem;
+  left: 0.75rem;
+  z-index: 10;
+  background: var(--panel);
+  border: 1px solid var(--panel-border-light);
+  border-radius: 6px;
+  padding: 0.4rem 0.7rem;
+  font-family: var(--font-body);
+  font-size: 0.8rem;
+  color: var(--danger-strong);
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.button:hover {
+  border-color: var(--danger-strong);
+  background: rgba(166, 58, 50, 0.12);
+}
