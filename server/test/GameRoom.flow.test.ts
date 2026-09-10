@@ -921,6 +921,45 @@ describe('GameRoom game flow', () => {
     expect(afterGuessSnaps[0].winner).toBeNull();
   });
 
+  it('resets note-mode fields when the host restarts a finished note-mode game', async () => {
+    const { stub, sockets, roleById, voteSnaps } = await startNoteRolesAndReachVote('FLOW-NOTE-RESTART', false);
+    expect(voteSnaps[0].phase).toBe('VOTE');
+    const civilId = Object.keys(roleById).find((id) => roleById[id] === 'civil')!;
+    const undercoverId = Object.keys(roleById).find((id) => roleById[id] === 'undercover')!;
+
+    // Votes must be submitted one at a time, awaiting each broadcast in turn -- sending them all
+    // in a burst would let each socket's one-shot `waitForMessage` listener consume the first
+    // interim (still-VOTE) broadcast instead of the final elimination one (same pitfall the
+    // tie-vote and Mr. White tests above document).
+    let afterVoteSnaps: any[] = [];
+    for (const voterId of Object.keys(sockets)) {
+      const target = voterId === undercoverId ? civilId : undercoverId;
+      const next = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+      sockets[voterId].send(JSON.stringify({ type: 'SUBMIT_VOTE', targetId: target }));
+      afterVoteSnaps = await next;
+    }
+    expect(afterVoteSnaps[0].phase === 'ELIMINATION' || afterVoteSnaps[0].phase === 'END').toBe(true);
+
+    // Drive to END regardless of whether it took one more reveal step.
+    if (afterVoteSnaps[0].phase === 'ELIMINATION') {
+      const afterReveal = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+      await runDurableObjectAlarm(stub);
+      await afterReveal;
+    }
+
+    const afterRestart = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+    sockets.a.send(JSON.stringify({ type: 'RESTART_GAME' }));
+    const restartSnaps = await afterRestart;
+
+    expect(restartSnaps[0].phase).toBe('LOBBY');
+    expect(restartSnaps[0].themeSetterId).toBeNull();
+    expect(restartSnaps[0].currentTheme).toBeNull();
+    expect(restartSnaps[0].themes).toEqual([]);
+    for (const p of restartSnaps[0].players) {
+      expect(p.note).toBeNull();
+    }
+  });
+
   it('rejects RESTART_GAME outside the END phase', async () => {
     const code = 'FLOW-RESTART-WRONG-PHASE';
     const id = env.GAME_ROOM.idFromName(code);

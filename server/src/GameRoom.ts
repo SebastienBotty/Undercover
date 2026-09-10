@@ -421,6 +421,7 @@ export class GameRoom extends DurableObject {
       player.role = null;
       player.character = null;
       player.characterImage = null;
+      player.note = null;
       player.alive = true;
     }
     room.phase = 'LOBBY';
@@ -432,6 +433,9 @@ export class GameRoom extends DurableObject {
     room.winner = null;
     room.lastEliminatedId = null;
     room.turnDeadline = null;
+    room.themeSetterId = null;
+    room.currentTheme = null;
+    room.themes = [];
 
     await this.saveRoom();
     this.broadcast();
