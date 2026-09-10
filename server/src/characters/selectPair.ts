@@ -16,9 +16,10 @@ function sharedTagCount(a: Character, b: Character): number {
 }
 
 function matchesLevel(count: number, level: SimilarityLevel): boolean {
+  // Tuned for characters carrying 10 tags each (was 1-2 / 3+ when characters had 5 tags).
   if (level === 'none') return count === 0;
-  if (level === 'close') return count >= 1 && count <= 2;
-  return count >= 3;
+  if (level === 'close') return count >= 2 && count <= 4;
+  return count >= 5;
 }
 
 export function selectCharacterPair(
