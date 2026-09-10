@@ -9,12 +9,14 @@ interface Player {
   alive: boolean;
   role: Role | null;
   character: string | null;
+  note?: number | null;
 }
 
 interface EliminationScreenProps {
   players: Player[];
   lastEliminatedId: string | null;
   selfId: string;
+  mode?: 'classic' | 'note';
   onMrWhiteGuess: (guess: string) => void;
 }
 
@@ -24,13 +26,18 @@ const ROLE_LABEL: Record<Role, string> = {
   mrwhite: 'Mr. White',
 };
 
-export function EliminationScreen({ players, lastEliminatedId, selfId, onMrWhiteGuess }: EliminationScreenProps) {
+export function EliminationScreen({ players, lastEliminatedId, selfId, mode = 'classic', onMrWhiteGuess }: EliminationScreenProps) {
   const [guess, setGuess] = useState('');
   const eliminated = players.find((p) => p.id === lastEliminatedId);
 
   if (!eliminated) return <p className="muted">Personne n'a été éliminé ce tour-ci.</p>;
 
   const isSelfMrWhiteAwaitingGuess = eliminated.id === selfId && eliminated.role === 'mrwhite';
+  const revealedDetail = eliminated.character
+    ? ` (${eliminated.character})`
+    : eliminated.note != null
+      ? ` (${eliminated.note}/20)`
+      : '';
 
   return (
     <div>
@@ -40,7 +47,7 @@ export function EliminationScreen({ players, lastEliminatedId, selfId, onMrWhite
       </h2>
       <p className="muted">
         C'était {eliminated.role ? ROLE_LABEL[eliminated.role] : ''}
-        {eliminated.character ? ` (${eliminated.character})` : ''}
+        {revealedDetail}
       </p>
 
       {isSelfMrWhiteAwaitingGuess && (
@@ -51,8 +58,25 @@ export function EliminationScreen({ players, lastEliminatedId, selfId, onMrWhite
             onMrWhiteGuess(guess);
           }}
         >
-          <label htmlFor="guess-input">Devine le personnage des Civils</label>
-          <input id="guess-input" className="input" value={guess} onChange={(e) => setGuess(e.target.value)} />
+          {mode === 'note' ? (
+            <>
+              <label htmlFor="guess-input">Devine la note des Civils (0-20)</label>
+              <input
+                id="guess-input"
+                type="number"
+                min={0}
+                max={20}
+                className="input"
+                value={guess}
+                onChange={(e) => setGuess(e.target.value)}
+              />
+            </>
+          ) : (
+            <>
+              <label htmlFor="guess-input">Devine le personnage des Civils</label>
+              <input id="guess-input" className="input" value={guess} onChange={(e) => setGuess(e.target.value)} />
+            </>
+          )}
           <button type="submit" className="btn btnBlock">
             Deviner
           </button>

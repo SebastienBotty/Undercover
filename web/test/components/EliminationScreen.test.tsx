@@ -31,4 +31,27 @@ describe('EliminationScreen', () => {
     fireEvent.click(screen.getByRole('button', { name: /deviner/i }));
     expect(onMrWhiteGuess).toHaveBeenCalledWith('Goku');
   });
+
+  it('reveals the eliminated player note when present, instead of a character', () => {
+    const notePlayers = [
+      { id: 'p1', name: 'Alice', alive: true, role: null, character: null, note: null },
+      { id: 'p2', name: 'Bob', alive: false, role: 'undercover' as const, character: null, note: 10 },
+    ];
+    render(<EliminationScreen players={notePlayers} lastEliminatedId="p2" selfId="p1" onMrWhiteGuess={() => {}} />);
+    expect(screen.getByText(/10\/20/)).toBeInTheDocument();
+  });
+
+  it('shows a numeric guess field to the eliminated Mr. White in note mode', () => {
+    const mrWhitePlayers = [
+      { id: 'p1', name: 'Alice', alive: true, role: null, character: null, note: null },
+      { id: 'p2', name: 'Bob', alive: false, role: 'mrwhite' as const, character: null, note: null },
+    ];
+    const onMrWhiteGuess = vi.fn();
+    render(<EliminationScreen players={mrWhitePlayers} lastEliminatedId="p2" selfId="p2" mode="note" onMrWhiteGuess={onMrWhiteGuess} />);
+    const input = screen.getByLabelText(/devine la note/i);
+    expect(input).toHaveAttribute('type', 'number');
+    fireEvent.change(input, { target: { value: '14' } });
+    fireEvent.click(screen.getByRole('button', { name: /deviner/i }));
+    expect(onMrWhiteGuess).toHaveBeenCalledWith('14');
+  });
 });
