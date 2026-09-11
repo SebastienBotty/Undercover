@@ -46,14 +46,13 @@ describe('EliminationScreen', () => {
     expect(screen.getByText(/10\/20/)).toBeInTheDocument();
   });
 
-  it('shows a "role stays secret" message instead of the role when the host disabled reveal-on-elimination', () => {
+  it('shows no role text at all when the host disabled reveal-on-elimination', () => {
     const hiddenPlayers = [
       { id: 'p1', name: 'Alice', alive: true, role: null, character: null },
       { id: 'p2', name: 'Bob', alive: false, role: null, character: null },
     ];
     render(<EliminationScreen players={hiddenPlayers} lastEliminatedId="p2" selfId="p1" onMrWhiteGuess={() => {}} />);
-    expect(screen.getByText(/son rôle reste secret/i)).toBeInTheDocument();
-    expect(screen.queryByText(/undercover|civil|mr\. white/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/undercover|civil|mr\. white|secret/i)).not.toBeInTheDocument();
   });
 
   it('shows a big "Tu as été éliminé" heading to the eliminated player themselves', () => {
@@ -73,13 +72,6 @@ describe('EliminationScreen', () => {
     expect(screen.getByText(/personne n'a été éliminé ce tour-ci/i)).toBeInTheDocument();
   });
 
-  it('explains a tie when nobody was eliminated because of one', () => {
-    render(
-      <EliminationScreen players={players} lastEliminatedId={null} noEliminationReason="tie" selfId="p1" onMrWhiteGuess={() => {}} />,
-    );
-    expect(screen.getByText(/égalité entre plusieurs joueurs/i)).toBeInTheDocument();
-  });
-
   it('explains a lack of votes when nobody was eliminated because nobody voted', () => {
     render(
       <EliminationScreen
@@ -91,19 +83,6 @@ describe('EliminationScreen', () => {
       />,
     );
     expect(screen.getByText(/personne n'a voté/i)).toBeInTheDocument();
-  });
-
-  it('explains a lack of majority when a single candidate led but not enough alive players backed them', () => {
-    render(
-      <EliminationScreen
-        players={players}
-        lastEliminatedId={null}
-        noEliminationReason="no_majority"
-        selfId="p1"
-        onMrWhiteGuess={() => {}}
-      />,
-    );
-    expect(screen.getByText(/pas de majorité parmi les joueurs vivants/i)).toBeInTheDocument();
   });
 
   it('shows a numeric guess field to the eliminated Mr. White in note mode', () => {

@@ -73,6 +73,13 @@
   margin-bottom: 0.5rem;
 }
 
+.runoffNotice {
+  color: var(--danger-strong);
+  font-size: 0.9rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
 /* Always rendered (with a placeholder digit) so its box keeps reserving the same height/margin
    whether or not it's actually showing -- otherwise the rest of the screen jumps up/down every
    time it appears or disappears. */

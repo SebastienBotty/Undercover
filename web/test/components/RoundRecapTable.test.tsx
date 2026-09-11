@@ -145,6 +145,27 @@ describe('RoundRecapTable', () => {
     expect(screen.queryByText('Déconnecté')).not.toBeInTheDocument();
   });
 
+  it('shows an accusation-vote count next to a player who has missed clue timers, but not otherwise', () => {
+    render(
+      <RoundRecapTable
+        players={players}
+        turnOrder={turnOrder}
+        clues={clues}
+        totalRounds={1}
+        accusationVotes={{ p2: 2 }}
+      />,
+    );
+    const bobRow = screen.getByText('Bob').closest('tr')!;
+    expect(bobRow).toHaveTextContent('+2 votes');
+    const aliceRow = screen.getByText('Alice').closest('tr')!;
+    expect(aliceRow).not.toHaveTextContent('vote');
+  });
+
+  it('shows no accusation stamp when accusationVotes is absent or the count is zero', () => {
+    render(<RoundRecapTable players={players} turnOrder={turnOrder} clues={clues} totalRounds={1} accusationVotes={{ p1: 0 }} />);
+    expect(screen.queryByText(/\+\d+ vote/)).not.toBeInTheDocument();
+  });
+
   it('shows a white "Mr. White" tag and never reveals a role for a still-alive player', () => {
     const mixed = [
       { id: 'p1', name: 'Alice', alive: true, role: 'civil' as const }, // own role, revealed to self server-side, but must not show in the table while alive

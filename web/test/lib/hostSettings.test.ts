@@ -10,12 +10,15 @@ describe('host settings storage', () => {
       themes: [],
       similarityLevel: 'close',
       mrWhiteEnabled: false,
-      animeSeries: [],
+      seriesFilter: {},
       clueTimerEnabled: true,
       clueTimerSeconds: 30,
       voteTimerEnabled: true,
       voteTimerSeconds: 60,
+      cluePassesPerVote: 2,
       mode: 'classic',
+      noteGapMin: 2,
+      noteGapMax: 6,
       revealRoleOnElimination: true,
     });
   });
@@ -25,24 +28,30 @@ describe('host settings storage', () => {
       themes: ['anime', 'films'],
       similarityLevel: 'very_close',
       mrWhiteEnabled: true,
-      animeSeries: ['one-piece', 'naruto'],
+      seriesFilter: { anime: ['one-piece', 'naruto'] },
       clueTimerEnabled: false,
       clueTimerSeconds: 45,
       voteTimerEnabled: false,
       voteTimerSeconds: 90,
+      cluePassesPerVote: 3,
       mode: 'note',
+      noteGapMin: 3,
+      noteGapMax: 8,
       revealRoleOnElimination: false,
     });
     expect(getStoredHostSettings()).toEqual({
       themes: ['anime', 'films'],
       similarityLevel: 'very_close',
       mrWhiteEnabled: true,
-      animeSeries: ['one-piece', 'naruto'],
+      seriesFilter: { anime: ['one-piece', 'naruto'] },
       clueTimerEnabled: false,
       clueTimerSeconds: 45,
       voteTimerEnabled: false,
       voteTimerSeconds: 90,
+      cluePassesPerVote: 3,
       mode: 'note',
+      noteGapMin: 3,
+      noteGapMax: 8,
       revealRoleOnElimination: false,
     });
   });
@@ -53,11 +62,12 @@ describe('host settings storage', () => {
       JSON.stringify({ themes: ['anime'], similarityLevel: 'close', mrWhiteEnabled: false })
     );
     const settings = getStoredHostSettings();
-    expect(settings.animeSeries).toEqual([]);
+    expect(settings.seriesFilter).toEqual({});
     expect(settings.clueTimerEnabled).toBe(true);
     expect(settings.clueTimerSeconds).toBe(30);
     expect(settings.voteTimerEnabled).toBe(true);
     expect(settings.voteTimerSeconds).toBe(60);
+    expect(settings.cluePassesPerVote).toBe(2);
     expect(settings.mode).toBe('classic');
     expect(settings.revealRoleOnElimination).toBe(true);
   });

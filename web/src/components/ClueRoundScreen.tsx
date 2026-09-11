@@ -17,13 +17,15 @@ interface ClueRoundScreenProps {
   turnDeadline?: number | null;
   themes?: ThemeEntry[];
   currentTheme?: string | null;
+  /** Phantom votes accumulated by missing a clue timer, keyed by player id. */
+  accusationVotes?: Record<string, number>;
   selfId: string;
   onSubmitClue: (text: string) => void;
 }
 
 const URGENT_THRESHOLD_SECONDS = 10;
 
-export function ClueRoundScreen({ players, turnOrder, currentTurnIndex, clues, round, turnDeadline, themes, currentTheme, selfId, onSubmitClue }: ClueRoundScreenProps) {
+export function ClueRoundScreen({ players, turnOrder, currentTurnIndex, clues, round, turnDeadline, themes, currentTheme, accusationVotes, selfId, onSubmitClue }: ClueRoundScreenProps) {
   const [draft, setDraft] = useState('');
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
   const currentPlayerId = turnOrder[currentTurnIndex];
@@ -60,6 +62,7 @@ export function ClueRoundScreen({ players, turnOrder, currentTurnIndex, clues, r
         totalRounds={round}
         currentTurnPlayerId={currentPlayerId}
         themes={themes}
+        accusationVotes={accusationVotes}
       />
       {isMyTurn ? (
         <form className="field" onSubmit={(e) => { e.preventDefault(); onSubmitClue(draft); setDraft(''); }}>

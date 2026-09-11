@@ -30,12 +30,15 @@ const baseSettings = {
   themes: [],
   similarityLevel: "close" as const,
   mrWhiteEnabled: false,
-  animeSeries: [],
+  seriesFilter: {},
   clueTimerEnabled: true,
   clueTimerSeconds: 30,
   voteTimerEnabled: true,
   voteTimerSeconds: 60,
+  cluePassesPerVote: 2,
   mode: "classic" as const,
+  noteGapMin: 2,
+  noteGapMax: 6,
   revealRoleOnElimination: true,
 };
 
@@ -310,14 +313,14 @@ describe("LobbyScreen", () => {
       />,
     );
     const naruto = await screen.findByLabelText(/naruto/i);
-    // Default (animeSeries: []) means "all series" -- both checkboxes start checked.
+    // Default (seriesFilter: {}) means "all series" -- both checkboxes start checked.
     expect(naruto).toBeChecked();
     expect(screen.getByLabelText(/one piece/i)).toBeChecked();
 
     fireEvent.click(naruto);
     // Unchecking Naruto while everything was implicitly selected leaves only One Piece explicit.
     expect(onSettingsChange).toHaveBeenCalledWith(
-      expect.objectContaining({ animeSeries: ["one-piece"] }),
+      expect.objectContaining({ seriesFilter: { anime: ["one-piece"] } }),
     );
   });
 
@@ -429,6 +432,30 @@ describe("LobbyScreen", () => {
     );
   });
 
+  it("lets the host change how many clue passes happen before each vote", () => {
+    const onSettingsChange = vi.fn();
+    render(
+      <LobbyScreen
+        isHost={true}
+        code="ABCDE"
+        selfId="self"
+        onKickPlayer={() => {}}
+        players={players}
+        settings={baseSettings}
+        onStart={() => {}}
+        onSettingsChange={onSettingsChange}
+      />,
+    );
+    fireEvent.click(screen.getByLabelText(/^timer$/i));
+
+    fireEvent.change(screen.getByLabelText(/nombre de manches d'indices avant chaque vote/i), {
+      target: { value: "3" },
+    });
+    expect(onSettingsChange).toHaveBeenCalledWith(
+      expect.objectContaining({ cluePassesPerVote: 3 }),
+    );
+  });
+
   it("lets the host start the game", () => {
     const onStart = vi.fn();
     render(
@@ -498,6 +525,74 @@ describe("LobbyScreen", () => {
     expect(screen.queryByText(/thèmes/i)).not.toBeInTheDocument();
     expect(screen.getByText(/attribuées au hasard/i)).toBeInTheDocument();
     expect(screen.queryByLabelText(/note des civils/i)).not.toBeInTheDocument();
+  });
+
+  it("shows a short explanation for whichever mode is currently selected", () => {
+    const { rerender } = render(
+      <LobbyScreen
+        isHost={true}
+        code="ABCDE"
+        selfId="self"
+        onKickPlayer={() => {}}
+        players={players}
+        settings={baseSettings}
+        onStart={() => {}}
+        onSettingsChange={() => {}}
+      />,
+    );
+    expect(screen.getByText(/personnage à décrire/i)).toBeInTheDocument();
+
+    rerender(
+      <LobbyScreen
+        isHost={true}
+        code="ABCDE"
+        selfId="self"
+        onKickPlayer={() => {}}
+        players={players}
+        settings={{ ...baseSettings, mode: "note" }}
+        onStart={() => {}}
+        onSettingsChange={() => {}}
+      />,
+    );
+    expect(screen.getByText(/note secrète/i)).toBeInTheDocument();
+    expect(screen.queryByText(/personnage à décrire/i)).not.toBeInTheDocument();
+  });
+
+  it("lets the host adjust the min/max note gap in note mode", () => {
+    const onSettingsChange = vi.fn();
+    render(
+      <LobbyScreen
+        isHost={true}
+        code="ABCDE"
+        selfId="self"
+        onKickPlayer={() => {}}
+        players={players}
+        settings={{ ...baseSettings, mode: "note" }}
+        onStart={() => {}}
+        onSettingsChange={onSettingsChange}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText(/écart minimum entre les notes/i), { target: { value: "4" } });
+    expect(onSettingsChange).toHaveBeenCalledWith(expect.objectContaining({ noteGapMin: 4 }));
+
+    fireEvent.change(screen.getByLabelText(/écart maximum entre les notes/i), { target: { value: "10" } });
+    expect(onSettingsChange).toHaveBeenCalledWith(expect.objectContaining({ noteGapMax: 10 }));
+  });
+
+  it("does not show the note gap sliders in classic mode", () => {
+    render(
+      <LobbyScreen
+        isHost={true}
+        code="ABCDE"
+        selfId="self"
+        onKickPlayer={() => {}}
+        players={players}
+        settings={baseSettings}
+        onStart={() => {}}
+        onSettingsChange={() => {}}
+      />,
+    );
+    expect(screen.queryByLabelText(/écart minimum entre les notes/i)).not.toBeInTheDocument();
   });
 
   it("lets the host kick a player from the roster immediately, with no confirmation", () => {

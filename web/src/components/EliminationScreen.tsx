@@ -13,7 +13,7 @@ interface Player {
   note?: number | null;
 }
 
-type NoEliminationReason = 'tie' | 'no_votes' | 'no_majority';
+type NoEliminationReason = 'no_votes';
 
 interface EliminationScreenProps {
   players: Player[];
@@ -26,9 +26,7 @@ interface EliminationScreenProps {
 }
 
 const NO_ELIMINATION_LABEL: Record<NoEliminationReason, string> = {
-  tie: 'Égalité entre plusieurs joueurs',
   no_votes: "Personne n'a voté",
-  no_majority: "Pas de majorité parmi les joueurs vivants",
 };
 
 const ROLE_LABEL: Record<Role, string> = {
@@ -88,16 +86,12 @@ export function EliminationScreen({
           </>
         )}
       </h2>
-      <p className="muted">
-        {eliminated.role ? (
-          <>
-            C'était <span className={ROLE_CLASS[eliminated.role]}>{ROLE_LABEL[eliminated.role]}</span>
-            {revealedDetail}
-          </>
-        ) : (
-          "Son rôle reste secret."
-        )}
-      </p>
+      {eliminated.role && (
+        <p className="muted">
+          C'était <span className={ROLE_CLASS[eliminated.role]}>{ROLE_LABEL[eliminated.role]}</span>
+          {revealedDetail}
+        </p>
+      )}
 
       {isSelfMrWhiteAwaitingGuess && (
         <form

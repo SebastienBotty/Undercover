@@ -5,6 +5,10 @@ import {
   CLUE_TIMER_MAX_SECONDS,
   VOTE_TIMER_MIN_SECONDS,
   VOTE_TIMER_MAX_SECONDS,
+  CLUE_PASSES_MIN,
+  CLUE_PASSES_MAX,
+  NOTE_GAP_MIN_ALLOWED,
+  NOTE_GAP_MAX_ALLOWED,
   type RoomSettings,
   type SimilarityLevel,
   type GameMode,
@@ -76,15 +80,18 @@ export function LobbyScreen({
     onSettingsChange({ ...settings, themes: nextThemes });
   }
 
-  function toggleAnimeSeries(seriesId: string, allSeriesIds: string[]) {
-    // An empty animeSeries means "no filter, every series included" -- the first toggle turns
+  function toggleSeries(themeId: string, seriesId: string, allSeriesIds: string[]) {
+    // A missing/empty entry means "no filter, every series included" -- the first toggle turns
     // that implicit "all" into an explicit list, which then behaves as a normal toggle set.
-    const currentlySelected =
-      settings.animeSeries.length === 0 ? allSeriesIds : settings.animeSeries;
+    const current = settings.seriesFilter[themeId] ?? [];
+    const currentlySelected = current.length === 0 ? allSeriesIds : current;
     const nextSelected = currentlySelected.includes(seriesId)
       ? currentlySelected.filter((id) => id !== seriesId)
       : [...currentlySelected, seriesId];
-    onSettingsChange({ ...settings, animeSeries: nextSelected });
+    onSettingsChange({
+      ...settings,
+      seriesFilter: { ...settings.seriesFilter, [themeId]: nextSelected },
+    });
   }
 
   const themesControl = (
@@ -146,9 +153,8 @@ export function LobbyScreen({
                 className={`${styles.seriesList}${openSeries[theme.id] ? ` ${styles.seriesListOpen}` : ""}`}
               >
                 {theme.series.map((series) => {
-                  const isChecked =
-                    settings.animeSeries.length === 0 ||
-                    settings.animeSeries.includes(series.id);
+                  const selected = settings.seriesFilter[theme.id] ?? [];
+                  const isChecked = selected.length === 0 || selected.includes(series.id);
                   return (
                     <label
                       key={series.id}
@@ -160,7 +166,8 @@ export function LobbyScreen({
                         type="checkbox"
                         checked={isChecked}
                         onChange={() =>
-                          toggleAnimeSeries(
+                          toggleSeries(
+                            theme.id,
                             series.id,
                             theme.series!.map((s) => s.id),
                           )
@@ -207,6 +214,47 @@ export function LobbyScreen({
       />
       Révéler le rôle à l&apos;élimination
     </label>
+  );
+
+  const MODE_EXPLANATION: Record<GameMode, string> = {
+    classic:
+      "Chaque joueur reçoit un personnage à décrire par des indices. Les Civils partagent le même personnage, l'Undercover en a un différent mais proche.",
+    note: "Chaque joueur reçoit une note secrète (0-20) à décrire par des indices. Les Civils partagent la même note, l'Undercover en a une différente mais proche.",
+  };
+
+  const noteGapControl = (
+    <div className="field">
+      <label htmlFor="notegap-min-slider">Écart minimum entre les notes</label>
+      <div className={styles.timerSliderRow}>
+        <input
+          id="notegap-min-slider"
+          type="range"
+          className={styles.timerSlider}
+          min={NOTE_GAP_MIN_ALLOWED}
+          max={settings.noteGapMax}
+          step={1}
+          value={settings.noteGapMin}
+          aria-label="Écart minimum entre les notes"
+          onChange={(e) => onSettingsChange({ ...settings, noteGapMin: Number(e.target.value) })}
+        />
+        <span className={styles.timerValue}>{settings.noteGapMin}</span>
+      </div>
+      <label htmlFor="notegap-max-slider">Écart maximum entre les notes</label>
+      <div className={styles.timerSliderRow}>
+        <input
+          id="notegap-max-slider"
+          type="range"
+          className={styles.timerSlider}
+          min={settings.noteGapMin}
+          max={NOTE_GAP_MAX_ALLOWED}
+          step={1}
+          value={settings.noteGapMax}
+          aria-label="Écart maximum entre les notes"
+          onChange={(e) => onSettingsChange({ ...settings, noteGapMax: Number(e.target.value) })}
+        />
+        <span className={styles.timerValue}>{settings.noteGapMax}</span>
+      </div>
+    </div>
   );
 
   const timerControl = (
@@ -302,6 +350,26 @@ export function LobbyScreen({
               </div>
             )}
           </div>
+
+          <div className={styles.timerRow}>
+            <label htmlFor="cluepasses-slider">Manches d&apos;indices avant chaque vote</label>
+            <div className={styles.timerSliderRow}>
+              <input
+                id="cluepasses-slider"
+                type="range"
+                className={styles.timerSlider}
+                min={CLUE_PASSES_MIN}
+                max={CLUE_PASSES_MAX}
+                step={1}
+                value={settings.cluePassesPerVote}
+                aria-label="Nombre de manches d'indices avant chaque vote"
+                onChange={(e) =>
+                  onSettingsChange({ ...settings, cluePassesPerVote: Number(e.target.value) })
+                }
+              />
+              <span className={styles.timerValue}>{settings.cluePassesPerVote}</span>
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -365,9 +433,12 @@ export function LobbyScreen({
               </button>
             </div>
 
+            <p className="muted">{MODE_EXPLANATION[settings.mode]}</p>
+
             {settings.mode === "note" ? (
               <>
-                <p className="muted">Les notes des Civils et des Undercover sont attribuées au hasard entre 0 et 20.</p>
+                <p className="muted">Les notes des Civils et des Undercover sont attribuées au hasard.</p>
+                {noteGapControl}
                 {revealRoleControl}
                 {timerControl}
                 {mrWhiteControl}

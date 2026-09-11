@@ -35,6 +35,10 @@ interface VoteScreenProps {
   /** Unix ms timestamp when the vote auto-resolves early because everyone has voted, or null/undefined
    * while that isn't (yet, or anymore) the case. */
   allVotedDeadline?: number | null;
+  /** Non-null only during a tie-breaking runoff: restricts who can be voted for to these ids. */
+  voteCandidateIds?: string[] | null;
+  /** Phantom votes accumulated by missing a clue timer, keyed by player id. */
+  accusationVotes?: Record<string, number>;
   selfId: string;
   onVote: (targetId: string | null) => void;
   /** Cancels the viewer's own vote outright, going back to "hasn't voted" rather than abstaining. */
@@ -57,6 +61,8 @@ export function VoteScreen({
   voteDurationSeconds = VOTE_TIMER_DEFAULT_SECONDS,
   votedCount,
   allVotedDeadline,
+  voteCandidateIds,
+  accusationVotes,
   selfId,
   onVote,
   onRetractVote,
@@ -78,10 +84,20 @@ export function VoteScreen({
   const canVote = self?.alive ?? true;
   // An eliminated viewer gets no clickable targets at all -- the server already rejects their
   // vote with "Tu ne peux plus voter", but they shouldn't be able to attempt the click in the
-  // first place.
-  const votableIds = canVote ? new Set(players.filter((p) => p.alive && p.id !== selfId).map((p) => p.id)) : new Set<string>();
+  // first place. During a tie-breaking runoff, voteCandidateIds further narrows the field to
+  // just the previously-tied leaders.
+  const votableIds = canVote
+    ? new Set(
+        players
+          .filter((p) => p.alive && p.id !== selfId && (!voteCandidateIds || voteCandidateIds.includes(p.id)))
+          .map((p) => p.id)
+      )
+    : new Set<string>();
   const votedFor = players.find((p) => p.id === votedForId);
   const aliveCount = players.filter((p) => p.alive).length;
+  const runoffCandidateNames = voteCandidateIds
+    ?.map((id) => players.find((p) => p.id === id)?.name)
+    .filter((name): name is string => Boolean(name));
 
   const [graceSecondsLeft, setGraceSecondsLeft] = useState<number | null>(() =>
     allVotedDeadline ? Math.max(0, Math.ceil((allVotedDeadline - Date.now()) / 1000)) : null
@@ -186,6 +202,11 @@ export function VoteScreen({
         )}
       </div>
       <h2>Qui soupçonnes-tu ?</h2>
+      {runoffCandidateNames && runoffCandidateNames.length > 0 && (
+        <p className={styles.runoffNotice}>
+          Égalité ! Vote de départage entre {runoffCandidateNames.join(', ')}.
+        </p>
+      )}
       {votedCount !== undefined && (
         <p className={styles.voteCount}>
           {votedCount} / {aliveCount} ont voté
@@ -206,6 +227,7 @@ export function VoteScreen({
         selectedId={votedForId}
         onVote={handleVote}
         themes={themes}
+        accusationVotes={accusationVotes}
       />
       {canVote && (
         <button

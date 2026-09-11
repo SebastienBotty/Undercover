@@ -92,6 +92,11 @@
   vertical-align: middle;
 }
 
+.accusationStamp {
+  color: var(--accent-strong);
+  border-color: var(--accent-strong);
+}
+
 .roleTag {
   display: block;
   font-size: 0.7rem;

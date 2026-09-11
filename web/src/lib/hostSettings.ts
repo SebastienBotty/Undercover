@@ -10,12 +10,24 @@ export const VOTE_TIMER_MIN_SECONDS = 30;
 export const VOTE_TIMER_MAX_SECONDS = 180;
 export const VOTE_TIMER_DEFAULT_SECONDS = 60;
 
+// Keep in sync with server/src/game/notes.ts's NOTE_GAP_* constants.
+export const NOTE_GAP_MIN_ALLOWED = 1;
+export const NOTE_GAP_MAX_ALLOWED = 20;
+export const NOTE_GAP_DEFAULT_MIN = 2;
+export const NOTE_GAP_DEFAULT_MAX = 6;
+
+// Keep in sync with server/src/game/clueRound.ts's CLUE_PASSES_* constants.
+export const CLUE_PASSES_MIN = 1;
+export const CLUE_PASSES_MAX = 5;
+export const CLUE_PASSES_DEFAULT = 2;
+
 export interface RoomSettings {
   themes: string[];
   similarityLevel: SimilarityLevel;
   mrWhiteEnabled: boolean;
-  /** Which anime series to draw characters from when 'anime' is in themes. Empty = all. */
-  animeSeries: string[];
+  /** Which sub-categories (anime series, film, histoire era/domain) to draw characters from, keyed
+   * by theme id. A missing/empty entry for a theme means "no filter, draw from all of it". */
+  seriesFilter: Record<string, string[]>;
   /** Whether players get a countdown to submit their clue before being eliminated. */
   clueTimerEnabled: boolean;
   /** Clue submission window in seconds, between CLUE_TIMER_MIN_SECONDS and CLUE_TIMER_MAX_SECONDS. */
@@ -24,8 +36,14 @@ export interface RoomSettings {
   voteTimerEnabled: boolean;
   /** Vote window in seconds, between VOTE_TIMER_MIN_SECONDS and VOTE_TIMER_MAX_SECONDS. */
   voteTimerSeconds: number;
+  /** How many full clue passes happen before each vote, between CLUE_PASSES_MIN and CLUE_PASSES_MAX. */
+  cluePassesPerVote: number;
   /** 'classic' (character-based) or 'note' (numeric-note-based). */
   mode: GameMode;
+  /** Minimum gap between Civil's and Undercover's notes in 'note' mode, between NOTE_GAP_MIN_ALLOWED and noteGapMax. */
+  noteGapMin: number;
+  /** Maximum gap between Civil's and Undercover's notes in 'note' mode, between noteGapMin and NOTE_GAP_MAX_ALLOWED. */
+  noteGapMax: number;
   /** Whether an eliminated player's role/character/note is revealed to the other players. */
   revealRoleOnElimination: boolean;
 }
@@ -36,12 +54,15 @@ const DEFAULT_SETTINGS: RoomSettings = {
   themes: [],
   similarityLevel: 'close',
   mrWhiteEnabled: false,
-  animeSeries: [],
+  seriesFilter: {},
   clueTimerEnabled: true,
   clueTimerSeconds: CLUE_TIMER_DEFAULT_SECONDS,
   voteTimerEnabled: true,
   voteTimerSeconds: VOTE_TIMER_DEFAULT_SECONDS,
+  cluePassesPerVote: CLUE_PASSES_DEFAULT,
   mode: 'classic',
+  noteGapMin: NOTE_GAP_DEFAULT_MIN,
+  noteGapMax: NOTE_GAP_DEFAULT_MAX,
   revealRoleOnElimination: true,
 };
 

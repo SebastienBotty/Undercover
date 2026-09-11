@@ -134,6 +134,7 @@ export function GameApp({ roomCode, pseudo, isHost, onLeaveRoom }: GameAppProps)
           round={roomState.round}
           themeSetterId={roomState.themeSetterId}
           turnDeadline={roomState.turnDeadline}
+          accusationVotes={roomState.accusationVotes}
           selfId={getOrCreateClientId()}
           onSubmitTheme={(text) => send({ type: 'SUBMIT_THEME', text })}
         />
@@ -150,6 +151,7 @@ export function GameApp({ roomCode, pseudo, isHost, onLeaveRoom }: GameAppProps)
           turnDeadline={roomState.turnDeadline}
           themes={roomState.themes}
           currentTheme={roomState.currentTheme}
+          accusationVotes={roomState.accusationVotes}
           selfId={getOrCreateClientId()}
           onSubmitClue={(text) => send({ type: 'SUBMIT_CLUE', text })}
         />
@@ -167,6 +169,8 @@ export function GameApp({ roomCode, pseudo, isHost, onLeaveRoom }: GameAppProps)
           voteDurationSeconds={roomState.settings?.voteTimerSeconds}
           votedCount={roomState.votedCount}
           allVotedDeadline={roomState.allVotedDeadline}
+          voteCandidateIds={roomState.voteCandidateIds}
+          accusationVotes={roomState.accusationVotes}
           selfId={getOrCreateClientId()}
           onVote={(targetId) => send({ type: 'SUBMIT_VOTE', targetId })}
           onRetractVote={() => send({ type: 'RETRACT_VOTE' })}

@@ -340,4 +340,51 @@ describe('VoteScreen', () => {
     expect(screen.queryByText(/⏱/)).not.toBeInTheDocument();
     expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
   });
+
+  describe('tie-breaking runoff (voteCandidateIds)', () => {
+    const runoffPlayers = [
+      { id: 'p1', name: 'Alice', alive: true },
+      { id: 'p2', name: 'Bob', alive: true },
+      { id: 'p3', name: 'Carl', alive: true },
+      { id: 'p4', name: 'Dora', alive: true },
+    ];
+    const runoffTurnOrder = ['p1', 'p2', 'p3', 'p4'];
+
+    it('restricts vote targets to the tied candidates and shows a runoff notice', () => {
+      render(
+        <VoteScreen
+          players={runoffPlayers}
+          turnOrder={runoffTurnOrder}
+          clues={clues}
+          round={2}
+          selfId="p1"
+          onVote={() => {}}
+          onRetractVote={() => {}}
+          voteCandidateIds={['p2', 'p3']}
+        />,
+      );
+      expect(screen.getByRole('button', { name: 'Bob' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Carl' })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Dora' })).not.toBeInTheDocument();
+      expect(screen.getByText(/égalité/i)).toHaveTextContent('Bob, Carl');
+    });
+
+    it('shows no runoff notice and every alive player is votable when voteCandidateIds is absent', () => {
+      render(
+        <VoteScreen
+          players={runoffPlayers}
+          turnOrder={runoffTurnOrder}
+          clues={clues}
+          round={2}
+          selfId="p1"
+          onVote={() => {}}
+          onRetractVote={() => {}}
+        />,
+      );
+      expect(screen.queryByText(/égalité/i)).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Bob' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Carl' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Dora' })).toBeInTheDocument();
+    });
+  });
 });

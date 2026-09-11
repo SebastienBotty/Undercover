@@ -16,13 +16,15 @@ interface ThemeSelectScreenProps {
   round: number;
   themeSetterId: string | null;
   turnDeadline?: number | null;
+  /** Phantom votes accumulated by missing a clue timer, keyed by player id. */
+  accusationVotes?: Record<string, number>;
   selfId: string;
   onSubmitTheme: (text: string) => void;
 }
 
 const URGENT_THRESHOLD_SECONDS = 10;
 
-export function ThemeSelectScreen({ players, turnOrder, clues, themes, round, themeSetterId, turnDeadline, selfId, onSubmitTheme }: ThemeSelectScreenProps) {
+export function ThemeSelectScreen({ players, turnOrder, clues, themes, round, themeSetterId, turnDeadline, accusationVotes, selfId, onSubmitTheme }: ThemeSelectScreenProps) {
   const [draft, setDraft] = useState('');
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
   const setter = players.find((p) => p.id === themeSetterId);
@@ -51,7 +53,14 @@ export function ThemeSelectScreen({ players, turnOrder, clues, themes, round, th
       </div>
       <h2>Thème</h2>
       {round > 1 && (
-        <RoundRecapTable players={players} turnOrder={turnOrder} clues={clues} themes={themes} totalRounds={round - 1} />
+        <RoundRecapTable
+          players={players}
+          turnOrder={turnOrder}
+          clues={clues}
+          themes={themes}
+          totalRounds={round - 1}
+          accusationVotes={accusationVotes}
+        />
       )}
       {isMyTurn ? (
         <form className="field" onSubmit={(e) => { e.preventDefault(); onSubmitTheme(draft); setDraft(''); }}>

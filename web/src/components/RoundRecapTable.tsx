@@ -47,6 +47,8 @@ interface RoundRecapTableProps {
   selectedId?: string | null;
   onVote?: (playerId: string) => void;
   themes?: ThemeEntry[];
+  /** Phantom votes accumulated by missing a clue timer, keyed by player id. */
+  accusationVotes?: Record<string, number>;
 }
 
 export function RoundRecapTable({
@@ -59,6 +61,7 @@ export function RoundRecapTable({
   selectedId = null,
   onVote,
   themes,
+  accusationVotes,
 }: RoundRecapTableProps) {
   const rounds = Array.from({ length: totalRounds }, (_, i) => i + 1);
 
@@ -90,6 +93,7 @@ export function RoundRecapTable({
             const isAlive = player.alive ?? true;
             const isDisconnected = player.connected === false;
             const revealedRole = !isAlive ? player.role : null;
+            const accusationCount = accusationVotes?.[playerId] ?? 0;
 
             const rowClass = [isTurn && styles.rowActive, !isAlive && styles.rowEliminated].filter(Boolean).join(' ') || undefined;
 
@@ -114,6 +118,14 @@ export function RoundRecapTable({
                   )}
                   {!isAlive && <span className={`stamp ${styles.inlineStamp}`}>Éliminé</span>}
                   {isDisconnected && <span className={`stamp ${styles.inlineStamp}`}>Déconnecté</span>}
+                  {accusationCount > 0 && (
+                    <span
+                      className={`stamp ${styles.inlineStamp} ${styles.accusationStamp}`}
+                      title="Vote(s) d'accusation accumulé(s) pour indice(s) manqué(s)"
+                    >
+                      +{accusationCount} vote{accusationCount > 1 ? 's' : ''}
+                    </span>
+                  )}
                   {revealedRole && (
                     <span className={`${styles.roleTag} ${ROLE_CLASS[revealedRole]}`}>{ROLE_LABEL[revealedRole]}</span>
                   )}
