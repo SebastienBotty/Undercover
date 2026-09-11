@@ -10,6 +10,30 @@ export interface SelectPairResult {
 
 const LEVELS: SimilarityLevel[] = ['very_close', 'close', 'none'];
 
+/** Chance that, once a civil character with attributes is picked, the undercover word becomes
+ * one of its own attributes instead of a genuinely different character. */
+const ATTRIBUTE_SWAP_CHANCE = 0.15;
+/** Only anime characters carry curated attributes for now (see data.ts). */
+const ATTRIBUTE_SWAP_THEME = 'anime';
+
+/** With ATTRIBUTE_SWAP_CHANCE probability, replaces `undercoverCharacter` with a synthetic
+ * "character" whose name is one of `civilCharacter`'s own attributes -- eligible only when the
+ * civil character is in ATTRIBUTE_SWAP_THEME and has at least one attribute. */
+function maybeSwapForAttribute(
+  civilCharacter: Character,
+  undercoverCharacter: Character,
+  random: () => number
+): Character {
+  if (civilCharacter.theme !== ATTRIBUTE_SWAP_THEME || !civilCharacter.attributes?.length) {
+    return undercoverCharacter;
+  }
+  if (random() >= ATTRIBUTE_SWAP_CHANCE) {
+    return undercoverCharacter;
+  }
+  const attribute = civilCharacter.attributes[Math.floor(random() * civilCharacter.attributes.length)];
+  return { id: `${civilCharacter.id}-attribute`, name: attribute, theme: civilCharacter.theme, tags: [] };
+}
+
 function sharedTagCount(a: Character, b: Character): number {
   const tagsB = new Set(b.tags);
   return a.tags.filter((tag) => tagsB.has(tag)).length;
@@ -27,13 +51,14 @@ export function selectCharacterPair(
   themes: string[],
   requestedLevel: SimilarityLevel,
   random: () => number = Math.random,
-  animeSeries: string[] = []
+  seriesFilter: Record<string, string[]> = {}
 ): SelectPairResult {
   const pool = characters.filter((c) => {
     if (!themes.includes(c.theme)) return false;
-    // An empty/omitted animeSeries means "no filter" -- every anime character stays eligible.
-    if (c.theme === 'anime' && animeSeries.length > 0) {
-      return c.series !== undefined && animeSeries.includes(c.series);
+    // A missing/empty entry for a theme means "no filter" -- every character in that theme stays eligible.
+    const allowedSeries = seriesFilter[c.theme];
+    if (allowedSeries && allowedSeries.length > 0) {
+      return c.series !== undefined && allowedSeries.includes(c.series);
     }
     return true;
   });
@@ -55,9 +80,11 @@ export function selectCharacterPair(
     if (pairs.length > 0) {
       const [charA, charB] = pairs[Math.floor(random() * pairs.length)];
       const civilFirst = random() < 0.5;
+      const civilCharacter = civilFirst ? charA : charB;
+      const undercoverCharacter = civilFirst ? charB : charA;
       return {
-        civilCharacter: civilFirst ? charA : charB,
-        undercoverCharacter: civilFirst ? charB : charA,
+        civilCharacter,
+        undercoverCharacter: maybeSwapForAttribute(civilCharacter, undercoverCharacter, random),
         levelUsed: level,
         wasRelaxed: level !== requestedLevel,
       };

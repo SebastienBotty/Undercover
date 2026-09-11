@@ -37,7 +37,7 @@ describe('room creation and websocket routing', () => {
     expect(res.headers.get('Access-Control-Allow-Methods')).toContain('POST');
   });
 
-  it('GET /api/themes returns the theme catalog with anime broken down by series', async () => {
+  it('GET /api/themes returns the theme catalog with each theme broken down by sub-category', async () => {
     const res = await SELF.fetch('https://example.com/api/themes');
     expect(res.status).toBe(200);
     expect(res.headers.get('Access-Control-Allow-Origin')).toBe('*');
@@ -49,9 +49,17 @@ describe('room creation and websocket routing', () => {
     expect(Array.isArray(anime.series)).toBe(true);
     expect(anime.series!.length).toBeGreaterThan(0);
 
+    // Films are broken down by source film/franchise, and histoire by era/domain, the same way
+    // anime is broken down by series.
     const films = body.themes.find((t) => t.id === 'films')!;
     expect(films).toBeDefined();
-    expect(films.series).toBeUndefined();
+    expect(Array.isArray(films.series)).toBe(true);
+    expect(films.series!.length).toBeGreaterThan(0);
+
+    const histoire = body.themes.find((t) => t.id === 'histoire')!;
+    expect(histoire).toBeDefined();
+    expect(Array.isArray(histoire.series)).toBe(true);
+    expect(histoire.series!.length).toBeGreaterThan(0);
   });
 
   it('GET /ws without a code returns 400', async () => {

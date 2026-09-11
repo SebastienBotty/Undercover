@@ -1,8 +1,18 @@
 import { describe, it, expect } from 'vitest';
-import { NOTE_MIN, NOTE_MAX, MIN_NOTE_GAP, MAX_NOTE_GAP, generateDistinctNotes, pickRandomThemeSetter } from '../../src/game/notes';
+import {
+  NOTE_MIN,
+  NOTE_MAX,
+  NOTE_GAP_DEFAULT_MIN,
+  NOTE_GAP_DEFAULT_MAX,
+  NOTE_GAP_MIN_ALLOWED,
+  NOTE_GAP_MAX_ALLOWED,
+  generateDistinctNotes,
+  resolveNoteGap,
+  pickRandomThemeSetter,
+} from '../../src/game/notes';
 
 describe('generateDistinctNotes', () => {
-  it('returns two notes within [0, 20], between MIN_NOTE_GAP and MAX_NOTE_GAP apart', () => {
+  it('returns two notes within [0, 20], between the default 2 and 6 points apart when no gap is given', () => {
     for (let i = 0; i < 200; i++) {
       const { civilNote, undercoverNote } = generateDistinctNotes(Math.random);
       expect(civilNote).toBeGreaterThanOrEqual(NOTE_MIN);
@@ -10,9 +20,29 @@ describe('generateDistinctNotes', () => {
       expect(undercoverNote).toBeGreaterThanOrEqual(NOTE_MIN);
       expect(undercoverNote).toBeLessThanOrEqual(NOTE_MAX);
       const gap = Math.abs(civilNote - undercoverNote);
-      expect(gap).toBeGreaterThanOrEqual(MIN_NOTE_GAP);
-      expect(gap).toBeLessThanOrEqual(MAX_NOTE_GAP);
+      expect(gap).toBeGreaterThanOrEqual(NOTE_GAP_DEFAULT_MIN);
+      expect(gap).toBeLessThanOrEqual(NOTE_GAP_DEFAULT_MAX);
     }
+  });
+
+  it('honors a host-chosen gap range', () => {
+    for (let i = 0; i < 200; i++) {
+      const { civilNote, undercoverNote } = generateDistinctNotes(Math.random, 10, 15);
+      const gap = Math.abs(civilNote - undercoverNote);
+      expect(gap).toBeGreaterThanOrEqual(10);
+      expect(gap).toBeLessThanOrEqual(15);
+    }
+  });
+
+  it('never dead-ends even at the extreme allowed gap (1 to 20), including when civilNote lands on an extreme', () => {
+    // random() = 0 draws civilNote = 0, the extreme where the candidate window is tightest.
+    const values = [0, 0.5];
+    let i = 0;
+    const scripted = () => values[i++];
+    const { civilNote, undercoverNote } = generateDistinctNotes(scripted, NOTE_GAP_MIN_ALLOWED, NOTE_GAP_MAX_ALLOWED);
+    expect(civilNote).toBe(0);
+    expect(undercoverNote).toBeGreaterThanOrEqual(NOTE_MIN);
+    expect(undercoverNote).toBeLessThanOrEqual(NOTE_MAX);
   });
 
   it('uses the injected random function deterministically', () => {
@@ -35,6 +65,33 @@ describe('generateDistinctNotes', () => {
     const { civilNote, undercoverNote } = generateDistinctNotes(scripted);
     expect(civilNote).toBe(10);
     expect(undercoverNote).toBe(16);
+  });
+});
+
+describe('resolveNoteGap', () => {
+  it('defaults to [2, 6] when the host requested nothing', () => {
+    expect(resolveNoteGap(undefined, undefined)).toEqual({ min: NOTE_GAP_DEFAULT_MIN, max: NOTE_GAP_DEFAULT_MAX });
+  });
+
+  it('passes through a valid host-requested range', () => {
+    expect(resolveNoteGap(4, 10)).toEqual({ min: 4, max: 10 });
+  });
+
+  it('clamps min below 1 up to 1 (the notes must always be different)', () => {
+    expect(resolveNoteGap(0, 6)).toEqual({ min: 1, max: 6 });
+    expect(resolveNoteGap(-5, 6)).toEqual({ min: 1, max: 6 });
+  });
+
+  it('clamps max above 20 down to 20', () => {
+    expect(resolveNoteGap(2, 999)).toEqual({ min: 2, max: 20 });
+  });
+
+  it('pulls max back up to min when the host requested max < min, rather than producing an impossible range', () => {
+    expect(resolveNoteGap(10, 3)).toEqual({ min: 10, max: 10 });
+  });
+
+  it('clamps a min requested above the allowed ceiling down to it', () => {
+    expect(resolveNoteGap(50, 60)).toEqual({ min: NOTE_GAP_MAX_ALLOWED, max: NOTE_GAP_MAX_ALLOWED });
   });
 });
 

@@ -7,4 +7,7 @@ export interface Character {
   tags: string[];
   /** URL of a representative photo/artwork for the character. */
   image?: string;
+  /** Short defining traits (e.g. "Empereur", "Caoutchouc") that can stand in for the character
+   * itself as the undercover word -- see selectPair.ts's attribute-swap mechanic. */
+  attributes?: string[];
 }
