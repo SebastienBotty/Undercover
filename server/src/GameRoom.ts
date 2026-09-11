@@ -3,21 +3,20 @@ import type { Role, RoomSettings, RoomState } from './types';
 import type { ClientMessage } from './messages';
 import { buildSnapshot } from './game/snapshot';
 import { assignRoles, buildTurnOrder } from './game/roles';
-import { nextAliveIndex, isClueRoundComplete, nextOddRound, resolveClueTimerSeconds } from './game/clueRound';
+import { nextAliveIndex, isClueRoundComplete, nextRoundAfterVote, resolveClueTimerSeconds, resolveCluePassesPerVote } from './game/clueRound';
 import { tallyVotes, checkWinCondition, checkMrWhiteGuess, checkMrWhiteNoteGuess, resolveVoteTimerSeconds, ALL_VOTED_GRACE_MS } from './game/voting';
 import { selectCharacterPair } from './characters/selectPair';
 import { CHARACTERS } from './characters/data';
 import { SERIES_LABELS } from './characters/seriesLabels';
-import { generateDistinctNotes, pickRandomThemeSetter } from './game/notes';
+import { generateDistinctNotes, pickRandomThemeSetter, resolveNoteGap } from './game/notes';
 
-/** Human-readable source-work label for an anime character (e.g. "One Piece"), null for every other theme. */
+/** Human-readable sub-category label for a character (e.g. "One Piece", "Guerre"), null when it has none. */
 function seriesLabelFor(character: { theme: string; series?: string } | null | undefined): string | null {
-  if (!character || character.theme !== 'anime' || !character.series) return null;
+  if (!character || !character.series) return null;
   return SERIES_LABELS[character.series] ?? character.series;
 }
 
 const STORAGE_KEY = 'room';
-const CLUE_ROUNDS_PER_VOTE = 2;
 /** Caps clue/theme text length so a room's persisted state can't grow unbounded. */
 const MAX_TEXT_LENGTH = 200;
 /** Mr. White can only be enabled with this many players or more, so a civilian majority stays possible. */
@@ -34,6 +33,14 @@ export class GameRoom extends DurableObject {
   protected async loadRoom(): Promise<void> {
     if (this.loaded) return;
     const stored = await this.ctx.storage.get<RoomState>(STORAGE_KEY);
+    if (stored) {
+      // Storage persists across deploys (and across wrangler dev restarts locally) -- a room
+      // saved before a field was added to RoomState simply won't have it, so backfill defaults
+      // defensively instead of crashing the next time game logic reads it.
+      stored.accusationVotes ??= {};
+      stored.voteCandidateIds ??= null;
+      stored.bannedClientIds ??= [];
+    }
     this.room = stored ?? null;
     this.loaded = true;
   }
@@ -145,17 +152,12 @@ export class GameRoom extends DurableObject {
     }
 
     if (room.phase === 'CLUE_ROUND') {
+      // Missing the clue timer no longer eliminates anyone outright, whether they merely went
+      // quiet or actually disconnected -- it records an accusation vote for the next tally and
+      // passes their turn with an empty clue, exactly like a real (empty) submission would.
       const playerId = room.turnOrder[room.currentTurnIndex];
-      const player = room.players.find((p) => p.id === playerId);
-      if (player && !player.connected) {
-        // They disconnected after their clue timer had already started running -- pass their
-        // turn instead of eliminating someone just for losing their connection.
-        await this.settleClueTurn(room);
-        await this.saveRoom();
-        this.broadcast();
-        return;
-      }
-      await this.enterEliminationPhase(playerId);
+      this.addAccusationVote(room, playerId);
+      await this.applyClue(playerId, '');
     }
   }
 
@@ -176,11 +178,12 @@ export class GameRoom extends DurableObject {
 
   /** Call whenever room.currentTurnIndex has just been set to whoever should act next in
    * CLUE_ROUND (game start, a fresh round, resuming after an elimination, etc). Auto-skips any
-   * disconnected players in a row by recording an empty clue on their behalf -- so a dropped
-   * connection can never stall the game waiting for a clue nobody can submit -- landing on
-   * either a connected player's turn (arming their clue timer) or, if skipping completes the
-   * round along the way, whatever phase transition that triggers. Pure mutation: does not save
-   * or broadcast, same as scheduleClueTimeout/enterThemeSelect. */
+   * disconnected players in a row by recording an empty clue (and an accusation vote, same
+   * consequence a real timeout gets) on their behalf -- so a dropped connection can never stall
+   * the game waiting for a clue nobody can submit -- landing on either a connected player's turn
+   * (arming their clue timer) or, if skipping completes the round along the way, whatever phase
+   * transition that triggers. Pure mutation: does not save or broadcast, same as
+   * scheduleClueTimeout/enterThemeSelect. */
   private async settleClueTurn(room: RoomState) {
     for (;;) {
       const currentId = room.turnOrder[room.currentTurnIndex];
@@ -190,6 +193,7 @@ export class GameRoom extends DurableObject {
         return;
       }
 
+      this.addAccusationVote(room, currentId);
       room.clues.push({ playerId: currentId, round: room.round, text: '' });
       const aliveIds = new Set(room.players.filter((p) => p.alive).map((p) => p.id));
       if (isClueRoundComplete(room.clues, room.round, aliveIds)) {
@@ -205,11 +209,13 @@ export class GameRoom extends DurableObject {
    * settleClueTurn auto-skipping disconnected players into completing the round. Pure mutation:
    * does not save or broadcast. */
   private async finishClueRound(room: RoomState, aliveIds: Set<string>) {
-    // Players give clues for CLUE_ROUNDS_PER_VOTE full passes before a vote is allowed -- room
-    // round increments once per pass (odd = first pass of the pair, even = second), so only an
-    // even round number after completion actually opens the vote.
-    if (room.round % CLUE_ROUNDS_PER_VOTE === 0) {
+    // Players give clues for the host-configured number of full passes before a vote is allowed
+    // -- room.round increments once per pass, so only once it's a clean multiple of that count
+    // does completing a pass actually open the vote.
+    const passesPerVote = resolveCluePassesPerVote(room.settings.cluePassesPerVote);
+    if (room.round % passesPerVote === 0) {
       room.phase = 'VOTE';
+      room.voteCandidateIds = null;
       await this.scheduleVoteTimeout();
       return;
     }
@@ -254,30 +260,52 @@ export class GameRoom extends DurableObject {
     await this.ctx.storage.setAlarm(deadline);
   }
 
-  /** Tallies the current votes and moves the room out of VOTE into ELIMINATION, whether or not
-   * anyone was actually eliminated -- a tie/no-votes result still gets its own brief reveal (with
-   * a reason) before the alarm moves the room on, exactly like a real elimination does. Shared by
-   * the vote-timer alarm and by handleSubmitVote's no-timer fast path. */
+  /** Tallies the current votes (plus any accusation votes) and either eliminates the plurality
+   * leader, kicks off a tie-breaking runoff, or -- if literally nobody voted for anyone -- gives
+   * its own brief "no elimination" reveal before the game moves on, exactly like a real
+   * elimination does. Shared by the vote-timer alarm and by handleSubmitVote's no-timer fast path. */
   private async resolveVotePhase() {
     const room = this.room!;
-    // Majority is computed against players who can actually still vote -- a disconnected player
-    // stays "alive" (they can still be voted out normally) but must not inflate the denominator,
-    // or a majority could become permanently unreachable once enough people drop out mid-game.
-    const aliveCount = room.players.filter((p) => p.alive && p.connected).length;
-    const { eliminatedId, reason } = tallyVotes(room.votes, aliveCount);
+    const { eliminatedId, reason, leaders } = tallyVotes(room.votes, room.accusationVotes);
     room.votes = {};
+    room.accusationVotes = {};
     room.allVotedDeadline = null;
-    if (!eliminatedId) {
-      room.lastEliminatedId = null;
-      room.noEliminationReason = reason;
-      room.phase = 'ELIMINATION';
-      room.turnDeadline = null;
-      await this.saveRoom();
-      this.broadcast();
-      await this.ctx.storage.setAlarm(Date.now() + 5_000);
+
+    if (eliminatedId) {
+      room.voteCandidateIds = null;
+      await this.enterEliminationPhase(eliminatedId);
       return;
     }
-    await this.enterEliminationPhase(eliminatedId);
+
+    if (leaders.length > 1) {
+      // Tie -- runoff, no reveal pause in between. The first tie narrows candidacy to just the
+      // tied leaders; a tie again while already narrowed re-opens it to everyone rather than
+      // narrowing further (there's nothing smaller left to narrow to).
+      room.voteCandidateIds = room.voteCandidateIds === null ? leaders : null;
+      room.phase = 'VOTE';
+      await this.scheduleVoteTimeout();
+      await this.saveRoom();
+      this.broadcast();
+      return;
+    }
+
+    // reason === 'no_votes': genuinely nobody voted for anyone -- move on without an elimination.
+    room.lastEliminatedId = null;
+    room.noEliminationReason = reason;
+    room.voteCandidateIds = null;
+    room.phase = 'ELIMINATION';
+    room.turnDeadline = null;
+    await this.saveRoom();
+    this.broadcast();
+    await this.ctx.storage.setAlarm(Date.now() + 5_000);
+  }
+
+  /** Registers one phantom "accusation" vote against a player who missed their clue timer --
+   * counted alongside real votes in the very next tally (resolveVotePhase), then cleared
+   * regardless of outcome. Lets a slow/AFK player be caught up on democratically instead of being
+   * eliminated outright for a single missed clue. */
+  private addAccusationVote(room: RoomState, playerId: string) {
+    room.accusationVotes[playerId] = (room.accusationVotes[playerId] ?? 0) + 1;
   }
 
   /** Enters THEME_SELECT for the round in progress: picks a random alive theme-setter and starts the shared turn timer. Reused both after ROLE_REVEAL and after an elimination resolves without a winner. */
@@ -357,21 +385,25 @@ export class GameRoom extends DurableObject {
     let roles: ReturnType<typeof assignRoles>;
     let civilNote = 0;
     let undercoverNote = 0;
+    let noteGapMin = 0;
+    let noteGapMax = 0;
     try {
       // Can throw for invalid combinations (e.g. too few characters in the selected themes, or
       // a player/role-count combo that can't guarantee a civilian majority) -- catch here so the
       // host gets a typed error instead of an uncaught exception and a half-started room.
       roles = assignRoles(playerIds, settings);
       if (mode === 'note') {
-        // Notes are never chosen by the host -- always drawn at random, guaranteed distinct.
-        ({ civilNote, undercoverNote } = generateDistinctNotes(Math.random));
+        // The notes themselves are never chosen by the host -- always drawn at random -- but the
+        // host does control how far apart they are.
+        ({ min: noteGapMin, max: noteGapMax } = resolveNoteGap(settings.noteGapMin, settings.noteGapMax));
+        ({ civilNote, undercoverNote } = generateDistinctNotes(Math.random, noteGapMin, noteGapMax));
       } else {
         selection = selectCharacterPair(
           CHARACTERS,
           settings.themes,
           settings.similarityLevel,
           Math.random,
-          settings.animeSeries ?? []
+          settings.seriesFilter ?? {}
         );
       }
     } catch (err) {
@@ -405,13 +437,16 @@ export class GameRoom extends DurableObject {
       clueTimerSeconds: resolveClueTimerSeconds(settings.clueTimerSeconds),
       voteTimerEnabled: settings.voteTimerEnabled ?? true,
       voteTimerSeconds: resolveVoteTimerSeconds(settings.voteTimerSeconds),
-      ...(mode === 'note' ? { civilNote, undercoverNote } : {}),
+      cluePassesPerVote: resolveCluePassesPerVote(settings.cluePassesPerVote),
+      ...(mode === 'note' ? { civilNote, undercoverNote, noteGapMin, noteGapMax } : {}),
     };
     room.turnOrder = buildTurnOrder(playerIds);
     room.currentTurnIndex = 0;
     room.round = 1;
     room.clues = [];
     room.votes = {};
+    room.accusationVotes = {};
+    room.voteCandidateIds = null;
     room.winner = null;
     room.lastEliminatedId = null;
     room.turnDeadline = null;
@@ -481,6 +516,11 @@ export class GameRoom extends DurableObject {
       const target = room.players.find((p) => p.id === targetId);
       if (!target || !target.alive) {
         this.sendErrorTo(playerId, 'INVALID_VOTE_TARGET', 'Cible de vote invalide');
+        return;
+      }
+      if (room.voteCandidateIds && !room.voteCandidateIds.includes(targetId)) {
+        // Mid tie-breaking runoff -- only the previously-tied leaders are valid targets.
+        this.sendErrorTo(playerId, 'INVALID_VOTE_TARGET', 'Ce joueur ne fait pas partie du départage');
         return;
       }
     }
@@ -620,6 +660,8 @@ export class GameRoom extends DurableObject {
     room.currentTurnIndex = 0;
     room.clues = [];
     room.votes = {};
+    room.accusationVotes = {};
+    room.voteCandidateIds = null;
     room.round = 0;
     room.winner = null;
     room.lastEliminatedId = null;
@@ -677,6 +719,7 @@ export class GameRoom extends DurableObject {
     target.alive = false;
     target.connected = false;
     delete room.votes[targetId];
+    delete room.accusationVotes[targetId];
 
     if (room.phase !== 'END') {
       // Safe: by the time a kick can affect the outcome, START_GAME has already assigned a
@@ -751,7 +794,7 @@ export class GameRoom extends DurableObject {
       room.turnDeadline = null;
       return;
     }
-    room.round = nextOddRound(room.round);
+    room.round = nextRoundAfterVote(room.round);
     if (room.settings.mode === 'note') {
       await this.enterThemeSelect(room);
       return;
@@ -824,6 +867,8 @@ export class GameRoom extends DurableObject {
         currentTurnIndex: 0,
         clues: [],
         votes: {},
+        accusationVotes: {},
+        voteCandidateIds: null,
         round: 0,
         winner: null,
         lastEliminatedId: null,

@@ -508,7 +508,7 @@ describe('GameRoom game flow', () => {
     expect(eliminationSnaps[0].lastEliminatedId).toBe('b');
   });
 
-  it('eliminates nobody when a single vote leads but falls short of a majority of alive players (1 of 4, the rest abstaining)', async () => {
+  it('eliminates a lone leader with just 1 vote out of 4 alive players (plurality, no majority required)', async () => {
     const code = 'FLOW-VOTE-NO-MAJORITY';
     const id = env.GAME_ROOM.idFromName(code);
     const stub = env.GAME_ROOM.get(id);
@@ -537,8 +537,9 @@ describe('GameRoom game flow', () => {
     const voteSnaps = await submitFullClueRound(sockets, turnOrder, 2);
     expect(voteSnaps[0].phase).toBe('VOTE');
 
-    // Only a votes, for b; b, c and d all abstain. b technically "leads" with 1 vote, but that's
-    // only 1 of the 4 alive players -- nowhere near a majority -- so nobody should be eliminated.
+    // Only a votes, for b; b, c and d all abstain. b only has 1 of the 4 alive players behind
+    // them -- nowhere near a majority -- but plurality no longer requires one: the lone leader
+    // still gets eliminated outright.
     const target = 'b';
     const votes: [string, string | null][] = [
       ['a', target],
@@ -554,9 +555,8 @@ describe('GameRoom game flow', () => {
 
     const eliminationSnaps = await resolveVoteTimer(stub, sockets);
     expect(eliminationSnaps[0].phase).toBe('ELIMINATION');
-    expect(eliminationSnaps[0].lastEliminatedId).toBeNull();
-    expect(eliminationSnaps[0].noEliminationReason).toBe('no_majority');
-    expect(eliminationSnaps[0].players.find((p: any) => p.id === target).alive).toBe(true);
+    expect(eliminationSnaps[0].lastEliminatedId).toBe(target);
+    expect(eliminationSnaps[0].players.find((p: any) => p.id === target).alive).toBe(false);
   });
 
   it('resolves with no elimination when every alive player abstains', async () => {
@@ -1065,7 +1065,7 @@ describe('GameRoom game flow', () => {
     expect(storedClue.text.length).toBe(200);
   });
 
-  it('eliminates the player who misses the 60s clue timeout mid-round', async () => {
+  it('records an accusation vote and passes the turn (no elimination) when a player misses the clue timeout mid-round', async () => {
     const code = 'FLOW-CLUE-TIMEOUT';
     const id = env.GAME_ROOM.idFromName(code);
     const stub = env.GAME_ROOM.get(id);
@@ -1095,9 +1095,9 @@ describe('GameRoom game flow', () => {
     const secondPlayerId = turnOrder[1];
 
     // First player submits a real clue (moving turn to the second player), then -- instead of
-    // the second player submitting -- let the 60s clue timeout alarm fire mid-round to exercise
-    // the CLUE_ROUND branch of alarm() (not the ROLE_REVEAL->CLUE_ROUND one already covered by
-    // other tests).
+    // the second player submitting -- let the clue timeout alarm fire mid-round to exercise the
+    // CLUE_ROUND branch of alarm() (not the ROLE_REVEAL->CLUE_ROUND one already covered by other
+    // tests).
     const afterFirstClue = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
     sockets[firstPlayerId].send(JSON.stringify({ type: 'SUBMIT_CLUE', text: `clue-from-${firstPlayerId}` }));
     await afterFirstClue;
@@ -1107,14 +1107,16 @@ describe('GameRoom game flow', () => {
     const timeoutSnaps = await afterTimeout;
     const timeoutSnap = timeoutSnaps[0];
 
-    // The player who missed the deadline is eliminated outright, same reveal phase a vote produces.
-    expect(timeoutSnap.phase).toBe('ELIMINATION');
-    expect(timeoutSnap.lastEliminatedId).toBe(secondPlayerId);
-    expect(timeoutSnap.turnDeadline).toBeNull();
+    // The player who missed the deadline is NOT eliminated -- their turn just passes with an
+    // empty clue, and they carry an accusation vote into the next tally instead.
+    expect(timeoutSnap.phase).toBe('CLUE_ROUND');
     const secondPlayer = timeoutSnap.players.find((p: any) => p.id === secondPlayerId);
-    expect(secondPlayer.alive).toBe(false);
-    // No empty clue should have been recorded for the timed-out player.
-    expect(timeoutSnap.clues.find((c: any) => c.playerId === secondPlayerId)).toBeUndefined();
+    expect(secondPlayer.alive).toBe(true);
+    expect(secondPlayer.connected).toBe(true);
+    expect(timeoutSnap.clues.find((c: any) => c.playerId === secondPlayerId && c.text === '')).toBeTruthy();
+    expect(timeoutSnap.accusationVotes[secondPlayerId]).toBe(1);
+    // Turn moved on to the third player.
+    expect(timeoutSnap.turnOrder[timeoutSnap.currentTurnIndex]).toBe(turnOrder[2]);
   });
 
   it('clamps the host-requested clue timer duration into [30, 90]s', async () => {
@@ -1458,11 +1460,11 @@ describe('GameRoom game flow', () => {
     const voteSnaps = await playOneThemeAndClueRound(2);
     expect(voteSnaps[0].phase).toBe('VOTE');
 
-    // Two players vote for each other -- a 2-2 tie among 4 alive players resolves with no elimination.
-    // Votes are submitted one at a time (like every other vote loop in this file): SUBMIT_VOTE
-    // broadcasts an interim snapshot after every single vote, not only the last, so firing all
-    // sends at once would let each socket's one-shot listener consume that first interim (still
-    // phase VOTE) broadcast instead of the final resolution.
+    // Two pairs vote for each other -- a 4-way tie among all 4 alive players (nobody has more
+    // votes than anyone else). Votes are submitted one at a time (like every other vote loop in
+    // this file): SUBMIT_VOTE broadcasts an interim snapshot after every single vote, not only
+    // the last, so firing all sends at once would let each socket's one-shot listener consume
+    // that first interim (still phase VOTE) broadcast instead of the final resolution.
     const pendingVotes: [string, string][] = [
       ['a', 'b'],
       ['b', 'a'],
@@ -1475,13 +1477,28 @@ describe('GameRoom game flow', () => {
       await next;
     }
 
-    // The tie gets its own brief ELIMINATION reveal (with reason 'tie') before the reveal alarm
-    // sends the room into the next round's THEME_SELECT.
-    const tieRevealSnaps = await resolveVoteTimer(stub, sockets);
-    for (const snap of tieRevealSnaps) {
+    // A tie no longer gets its own "no elimination" reveal -- it goes straight into a
+    // tie-breaking runoff, still in VOTE, restricted to the tied leaders (here, all 4).
+    const runoffSnaps = await resolveVoteTimer(stub, sockets);
+    for (const snap of runoffSnaps) {
+      expect(snap.phase).toBe('VOTE');
+      expect((snap.voteCandidateIds as string[]).slice().sort()).toEqual(['a', 'b', 'c', 'd']);
+      expect(snap.players.every((p: any) => p.alive)).toBe(true);
+    }
+
+    // Everyone abstains in the runoff -- genuinely nobody voted for anyone, which still gets its
+    // own brief "no elimination" reveal (reason 'no_votes') before the room moves on.
+    for (const voterId of Object.keys(sockets)) {
+      const next = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+      sockets[voterId].send(JSON.stringify({ type: 'SUBMIT_VOTE', targetId: null }));
+      await next;
+    }
+
+    const noVotesRevealSnaps = await resolveVoteTimer(stub, sockets);
+    for (const snap of noVotesRevealSnaps) {
       expect(snap.phase).toBe('ELIMINATION');
       expect(snap.lastEliminatedId).toBeNull();
-      expect(snap.noEliminationReason).toBe('tie');
+      expect(snap.noEliminationReason).toBe('no_votes');
     }
 
     const afterTieSnaps = await resolveVoteTimer(stub, sockets);
@@ -2184,5 +2201,55 @@ describe('GameRoom game flow', () => {
     expect(snapshot.type).toBe('ROOM_STATE');
     const bob = snapshot.players.find((p: any) => p.id === 'b');
     expect(bob.connected).toBe(true);
+  });
+
+  it('opens the vote after a single clue pass when the host configures cluePassesPerVote: 1', async () => {
+    const code = 'FLOW-CLUE-PASSES-1';
+    const id = env.GAME_ROOM.idFromName(code);
+    const stub = env.GAME_ROOM.get(id);
+
+    const wsA = await joinPlayer(stub, code, 'Alice', 'a', true);
+    const wsB = await joinPlayer(stub, code, 'Bob', 'b', false, [wsA]);
+    const wsC = await joinPlayer(stub, code, 'Carl', 'c', false, [wsA, wsB]);
+    const sockets: Record<string, WebSocket> = { a: wsA, b: wsB, c: wsC };
+
+    const started = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+    wsA.send(
+      JSON.stringify({
+        type: 'START_GAME',
+        settings: { themes: ['anime'], similarityLevel: 'none', mrWhiteEnabled: false, cluePassesPerVote: 1 },
+      })
+    );
+    const [snapA] = await started;
+    expect(snapA.settings.cluePassesPerVote).toBe(1);
+
+    const afterAlarmA = waitForMessage(wsA);
+    await runDurableObjectAlarm(stub);
+    const clueRoundSnap = await afterAlarmA;
+    const turnOrder = clueRoundSnap.turnOrder as string[];
+
+    // A single full pass should be enough to open the vote (instead of the default 2).
+    const voteSnaps = await submitFullClueRound(sockets, turnOrder, 1);
+    expect(voteSnaps[0].phase).toBe('VOTE');
+  });
+
+  it('clamps a host-requested cluePassesPerVote outside [1, 5]', async () => {
+    const code = 'FLOW-CLUE-PASSES-CLAMP';
+    const id = env.GAME_ROOM.idFromName(code);
+    const stub = env.GAME_ROOM.get(id);
+
+    const wsA = await joinPlayer(stub, code, 'Alice', 'a', true);
+    const wsB = await joinPlayer(stub, code, 'Bob', 'b', false, [wsA]);
+    await joinPlayer(stub, code, 'Carl', 'c', false, [wsA, wsB]);
+
+    const started = waitForMessage(wsA);
+    wsA.send(
+      JSON.stringify({
+        type: 'START_GAME',
+        settings: { themes: ['anime'], similarityLevel: 'none', mrWhiteEnabled: false, cluePassesPerVote: 99 },
+      })
+    );
+    const snapA = await started;
+    expect(snapA.settings.cluePassesPerVote).toBe(5);
   });
 });

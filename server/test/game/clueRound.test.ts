@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { nextAliveIndex, isClueRoundComplete, nextOddRound, resolveClueTimerSeconds } from '../../src/game/clueRound';
+import {
+  nextAliveIndex,
+  isClueRoundComplete,
+  nextRoundAfterVote,
+  resolveClueTimerSeconds,
+  resolveCluePassesPerVote,
+} from '../../src/game/clueRound';
 
 describe('nextAliveIndex', () => {
   const order = ['a', 'b', 'c', 'd'];
@@ -50,15 +56,11 @@ describe('isClueRoundComplete', () => {
   });
 });
 
-describe('nextOddRound', () => {
-  it('moves from an even round to the very next (odd) round', () => {
-    expect(nextOddRound(2)).toBe(3);
-    expect(nextOddRound(4)).toBe(5);
-  });
-
-  it('skips ahead two rounds when already on an odd round, to land on the next odd one', () => {
-    expect(nextOddRound(1)).toBe(3);
-    expect(nextOddRound(3)).toBe(5);
+describe('nextRoundAfterVote', () => {
+  it('always moves to the very next round', () => {
+    expect(nextRoundAfterVote(2)).toBe(3);
+    expect(nextRoundAfterVote(4)).toBe(5);
+    expect(nextRoundAfterVote(1)).toBe(2);
   });
 });
 
@@ -77,5 +79,23 @@ describe('resolveClueTimerSeconds', () => {
 
   it('clamps values above the 90s maximum', () => {
     expect(resolveClueTimerSeconds(200)).toBe(90);
+  });
+});
+
+describe('resolveCluePassesPerVote', () => {
+  it('defaults to 2 when the host requested no value', () => {
+    expect(resolveCluePassesPerVote(undefined)).toBe(2);
+  });
+
+  it('passes through a value already within [1, 5]', () => {
+    expect(resolveCluePassesPerVote(3)).toBe(3);
+  });
+
+  it('clamps values below the 1-pass minimum', () => {
+    expect(resolveCluePassesPerVote(0)).toBe(1);
+  });
+
+  it('clamps values above the 5-pass maximum', () => {
+    expect(resolveCluePassesPerVote(20)).toBe(5);
   });
 });

@@ -14,22 +14,27 @@ export function resolveVoteTimerSeconds(requestedSeconds: number | undefined): n
   return Math.min(VOTE_TIMER_MAX_SECONDS, Math.max(VOTE_TIMER_MIN_SECONDS, value));
 }
 
-/** Tallies votes and decides who (if anyone) gets eliminated. Elimination requires an absolute
- * majority of the votes among ALIVE players (strictly more than half of `aliveCount`) -- not just
- * a plurality among ballots actually cast, so e.g. 1 vote out of 4 alive players (the other 3
- * abstaining) never eliminates anyone even though that candidate technically "leads". */
+/** Tallies votes and decides who (if anyone) gets eliminated. Whoever has the most votes is
+ * eliminated outright (a plurality, not an absolute majority) -- accusationVotes (accumulated by
+ * missing a clue timer) are added on top of real ballots before comparing. A tie among the
+ * leaders resolves to no elimination this tally, with `leaders` telling the caller who to run the
+ * tie-breaking revote between. */
 export function tallyVotes(
   votes: Record<string, string | null>,
-  aliveCount: number
-): { eliminatedId: string | null; reason: NoEliminationReason | null } {
+  accusationVotes: Record<string, number> = {}
+): { eliminatedId: string | null; reason: NoEliminationReason | null; leaders: string[] } {
   const counts = new Map<string, number>();
   for (const targetId of Object.values(votes)) {
     if (targetId === null) continue; // abstained -- doesn't count toward anyone
     counts.set(targetId, (counts.get(targetId) ?? 0) + 1);
   }
+  for (const [targetId, extra] of Object.entries(accusationVotes)) {
+    if (extra <= 0) continue;
+    counts.set(targetId, (counts.get(targetId) ?? 0) + extra);
+  }
 
   if (counts.size === 0) {
-    return { eliminatedId: null, reason: 'no_votes' };
+    return { eliminatedId: null, reason: 'no_votes', leaders: [] };
   }
 
   let maxCount = -1;
@@ -44,12 +49,9 @@ export function tallyVotes(
   }
 
   if (leaders.length !== 1) {
-    return { eliminatedId: null, reason: 'tie' };
+    return { eliminatedId: null, reason: null, leaders };
   }
-  if (maxCount * 2 <= aliveCount) {
-    return { eliminatedId: null, reason: 'no_majority' };
-  }
-  return { eliminatedId: leaders[0], reason: null };
+  return { eliminatedId: leaders[0], reason: null, leaders };
 }
 
 export function checkWinCondition(players: { role: Role; alive: boolean }[]): Role | null {

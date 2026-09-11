@@ -17,6 +17,8 @@ function makeRoom(overrides: Partial<RoomState> = {}): RoomState {
     currentTurnIndex: 0,
     clues: [],
     votes: {},
+    accusationVotes: {},
+    voteCandidateIds: null,
     round: 1,
     winner: null,
     lastEliminatedId: 'p3',
@@ -110,8 +112,15 @@ describe('buildSnapshot', () => {
   });
 
   it('passes through the no-elimination reason', () => {
-    const snapshot = buildSnapshot(makeRoom({ noEliminationReason: 'tie' }), 'p1');
-    expect(snapshot.noEliminationReason).toBe('tie');
+    const snapshot = buildSnapshot(makeRoom({ noEliminationReason: 'no_votes' }), 'p1');
+    expect(snapshot.noEliminationReason).toBe('no_votes');
+  });
+
+  it('passes through accusationVotes and voteCandidateIds unchanged', () => {
+    const room = makeRoom({ accusationVotes: { p2: 2 }, voteCandidateIds: ['p1', 'p2'] });
+    const snapshot = buildSnapshot(room, 'p1');
+    expect(snapshot.accusationVotes).toEqual({ p2: 2 });
+    expect(snapshot.voteCandidateIds).toEqual(['p1', 'p2']);
   });
 
   it('reveals note only for the requesting player among the alive players, mirroring character', () => {

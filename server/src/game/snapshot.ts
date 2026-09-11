@@ -21,6 +21,11 @@ export function buildSnapshot(state: RoomState, forPlayerId: string) {
     // watching it live doesn't leak anyone's choice before the vote resolves.
     votedCount: Object.keys(state.votes).length,
     allVotedDeadline: state.allVotedDeadline,
+    // Phantom votes from missed clue timers, per target -- shown so players understand why
+    // someone might get eliminated with fewer real votes than expected.
+    accusationVotes: state.accusationVotes,
+    // Non-null only during a tie-breaking runoff, restricting who can be voted for.
+    voteCandidateIds: state.voteCandidateIds,
     themeSetterId: state.themeSetterId,
     currentTheme: state.currentTheme,
     themes: state.themes,

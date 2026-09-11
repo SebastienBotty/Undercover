@@ -8,58 +8,61 @@ import {
 } from '../../src/game/voting';
 
 describe('tallyVotes', () => {
-  it('eliminates the player with the most votes when it is an absolute majority of alive players', () => {
-    const result = tallyVotes({ a: 'c', b: 'c', c: 'a' }, 3);
-    expect(result).toEqual({ eliminatedId: 'c', reason: null });
+  it('eliminates the player with the most votes (plurality, no majority required)', () => {
+    const result = tallyVotes({ a: 'c', b: 'c', c: 'a' });
+    expect(result).toEqual({ eliminatedId: 'c', reason: null, leaders: ['c'] });
   });
 
-  it('returns reason "tie" when two players are equally voted', () => {
-    const result = tallyVotes({ a: 'b', b: 'a' }, 2);
-    expect(result.reason).toBe('tie');
-    expect(result.eliminatedId).toBeNull();
+  it('eliminates a lone leader even with just 1 vote out of many alive players', () => {
+    // No more "no_majority" outcome -- a single vote against an otherwise-untouched field still
+    // wins outright as long as nobody else has as many.
+    const result = tallyVotes({ a: 'x', b: null, c: null, d: null });
+    expect(result).toEqual({ eliminatedId: 'x', reason: null, leaders: ['x'] });
   });
 
-  it('returns reason "tie" for a three-way split with no single leader', () => {
-    const result = tallyVotes({ a: 'b', b: 'c', c: 'a' }, 3);
-    expect(result.reason).toBe('tie');
+  it('returns no elimination (reason null) and the tied leaders when two players are equally voted', () => {
+    const result = tallyVotes({ a: 'b', b: 'a' });
     expect(result.eliminatedId).toBeNull();
+    expect(result.reason).toBeNull();
+    expect(result.leaders.sort()).toEqual(['a', 'b']);
+  });
+
+  it('returns the tied leaders for a three-way split with no single leader', () => {
+    const result = tallyVotes({ a: 'b', b: 'c', c: 'a' });
+    expect(result.eliminatedId).toBeNull();
+    expect(result.leaders.sort()).toEqual(['a', 'b', 'c']);
   });
 
   it('excludes abstentions (null) from the tally', () => {
-    const result = tallyVotes({ a: 'b', b: null, c: 'b' }, 3);
-    expect(result).toEqual({ eliminatedId: 'b', reason: null });
+    const result = tallyVotes({ a: 'b', b: null, c: 'b' });
+    expect(result).toEqual({ eliminatedId: 'b', reason: null, leaders: ['b'] });
   });
 
-  it('returns reason "no_votes" when every submitted vote was an abstention', () => {
-    const result = tallyVotes({ a: null, b: null }, 2);
-    expect(result).toEqual({ eliminatedId: null, reason: 'no_votes' });
+  it('returns reason "no_votes" (and no leaders) when every submitted vote was an abstention', () => {
+    const result = tallyVotes({ a: null, b: null });
+    expect(result).toEqual({ eliminatedId: null, reason: 'no_votes', leaders: [] });
   });
 
   it('returns reason "no_votes" when nobody voted at all', () => {
-    const result = tallyVotes({}, 3);
-    expect(result).toEqual({ eliminatedId: null, reason: 'no_votes' });
+    const result = tallyVotes({});
+    expect(result).toEqual({ eliminatedId: null, reason: 'no_votes', leaders: [] });
   });
 
-  it('returns reason "no_majority" when a lone candidate leads but doesn\'t have half the alive players behind them (1 vote out of 4 alive, 3 abstaining)', () => {
-    const result = tallyVotes({ a: 'x', b: null, c: null, d: null }, 4);
-    expect(result).toEqual({ eliminatedId: null, reason: 'no_majority' });
+  it('adds accusation votes on top of real ballots before comparing', () => {
+    // Only 1 real vote for 'y', but 'x' carries 2 accusation votes from missed clue timers --
+    // 'x' should still lose to nobody, i.e. win the (unwanted) plurality.
+    const result = tallyVotes({ a: 'y' }, { x: 2 });
+    expect(result).toEqual({ eliminatedId: 'x', reason: null, leaders: ['x'] });
   });
 
-  it('returns reason "no_majority" for an exact half (2 of 4 alive players), which is not a strict majority', () => {
-    const result = tallyVotes({ a: 'x', b: 'x', c: null, d: null }, 4);
-    expect(result).toEqual({ eliminatedId: null, reason: 'no_majority' });
+  it('lets accusation votes turn what would be a tie into a clear leader', () => {
+    const result = tallyVotes({ a: 'x', b: 'y' }, { x: 1 });
+    expect(result).toEqual({ eliminatedId: 'x', reason: null, leaders: ['x'] });
   });
 
-  it('eliminates once the leader crosses strictly past half of alive players (3 of 4)', () => {
-    const result = tallyVotes({ a: 'x', b: 'x', c: 'x', d: null }, 4);
-    expect(result).toEqual({ eliminatedId: 'x', reason: null });
-  });
-
-  it('still requires the majority even when only some alive players have a votes entry at all', () => {
-    // Simulates a vote resolving with stragglers who never submitted anything -- aliveCount (5)
-    // is what matters, not the size of the votes record itself.
-    const result = tallyVotes({ a: 'x' }, 5);
-    expect(result).toEqual({ eliminatedId: null, reason: 'no_majority' });
+  it('ignores a non-positive accusation count', () => {
+    const result = tallyVotes({ a: 'y' }, { x: 0 });
+    expect(result).toEqual({ eliminatedId: 'y', reason: null, leaders: ['y'] });
   });
 });
 

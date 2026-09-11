@@ -19,14 +19,14 @@ export function isClueRoundComplete(clues: Pick<Clue, 'playerId' | 'round'>[], r
 }
 
 /**
- * Round after an elimination that guarantees a full CLUE_ROUNDS_PER_VOTE pair follows.
- * A vote only ever triggers once an even round completes, so bumping from an even round
- * simply moves to the next odd one. But a clue-timeout elimination can now happen mid-pair,
- * i.e. from an odd round -- resuming at `round + 1` (even) would let the next vote fire after
- * a single clue pass instead of two, so an odd round jumps ahead to the next odd one instead.
+ * Round to resume at once a vote has been resolved (elimination or a no-op "no_votes"). A vote
+ * is only ever reached right at a clean multiple of the host's configured passes-per-vote (see
+ * finishClueRound), and a clue-timeout no longer short-circuits straight to elimination mid-pair
+ * (it now just records an accusation and continues the round normally) -- so `round` is always
+ * exactly at that boundary here, and resuming at the very next round always starts a fresh group.
  */
-export function nextOddRound(round: number): number {
-  return round % 2 === 0 ? round + 1 : round + 2;
+export function nextRoundAfterVote(round: number): number {
+  return round + 1;
 }
 
 export const CLUE_TIMER_MIN_SECONDS = 30;
@@ -37,4 +37,14 @@ export const CLUE_TIMER_DEFAULT_SECONDS = 30;
 export function resolveClueTimerSeconds(requestedSeconds: number | undefined): number {
   const value = requestedSeconds ?? CLUE_TIMER_DEFAULT_SECONDS;
   return Math.min(CLUE_TIMER_MAX_SECONDS, Math.max(CLUE_TIMER_MIN_SECONDS, value));
+}
+
+export const CLUE_PASSES_MIN = 1;
+export const CLUE_PASSES_MAX = 5;
+export const CLUE_PASSES_DEFAULT = 2;
+
+/** Clamps the host's requested clue-passes-per-vote into the [1, 5] range the slider allows. */
+export function resolveCluePassesPerVote(requestedPasses: number | undefined): number {
+  const value = requestedPasses ?? CLUE_PASSES_DEFAULT;
+  return Math.min(CLUE_PASSES_MAX, Math.max(CLUE_PASSES_MIN, value));
 }
