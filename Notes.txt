@@ -1,0 +1,7 @@
+Retirer le kick et remplacer par un vote de plus
+Se fait éliminer celui qui a le plus de votes, si égalité on relance la phase de vote entre les joueurs à égalité. Si égalité encore, on relance la phase de vote entre tous les joueurs.
+Laisse l'hote parametrer toutes les cb de manches on vote
+Laisse l'hote choisir l'écart min et max pour les notes
+Au lieu de kick quand trop lent à jouer, lui donne un vote de plus pour la prochaine phase de vote
+Retirer le "Son rôle reste secret"
+Mettre des explications des modes

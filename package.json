@@ -1,0 +1,12 @@
+{
+  "name": "undercover",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently -n WEB,SERVER -c blue,green --kill-others \"npm run dev --prefix web\" \"npm run dev --prefix server\"",
+    "dev:web": "npm run dev --prefix web",
+    "dev:server": "npm run dev --prefix server"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  }
+}
