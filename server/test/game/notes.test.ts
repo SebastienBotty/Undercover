@@ -8,7 +8,6 @@ import {
   NOTE_GAP_MAX_ALLOWED,
   generateDistinctNotes,
   resolveNoteGap,
-  pickRandomThemeSetter,
 } from '../../src/game/notes';
 
 describe('generateDistinctNotes', () => {
@@ -92,18 +91,5 @@ describe('resolveNoteGap', () => {
 
   it('clamps a min requested above the allowed ceiling down to it', () => {
     expect(resolveNoteGap(50, 60)).toEqual({ min: NOTE_GAP_MAX_ALLOWED, max: NOTE_GAP_MAX_ALLOWED });
-  });
-});
-
-describe('pickRandomThemeSetter', () => {
-  it('picks the only alive player when there is just one', () => {
-    expect(pickRandomThemeSetter(['a'], () => 0)).toBe('a');
-  });
-
-  it('uses the injected random function to pick among alive players', () => {
-    const aliveIds = ['a', 'b', 'c'];
-    expect(pickRandomThemeSetter(aliveIds, () => 0)).toBe('a');
-    expect(pickRandomThemeSetter(aliveIds, () => 0.5)).toBe('b');
-    expect(pickRandomThemeSetter(aliveIds, () => 0.99)).toBe('c');
   });
 });

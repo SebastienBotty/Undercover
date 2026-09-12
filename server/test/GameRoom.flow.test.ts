@@ -1299,7 +1299,8 @@ describe('GameRoom game flow', () => {
     await started;
 
     // Bob and Carl disconnect before the ROLE_REVEAL alarm even fires -- only Alice is left
-    // connected, so she must be the one picked as theme-setter even though the pick is random.
+    // connected, so she must be the one picked as theme-setter even though turnOrder might not
+    // start on her.
     const afterDropB = waitForMessage(wsA);
     wsB.close();
     await afterDropB;

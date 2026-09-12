@@ -8,7 +8,7 @@ import { tallyVotes, checkWinCondition, checkMrWhiteGuess, checkMrWhiteNoteGuess
 import { selectCharacterPair } from './characters/selectPair';
 import { CHARACTERS } from './characters/data';
 import { SERIES_LABELS } from './characters/seriesLabels';
-import { generateDistinctNotes, pickRandomThemeSetter, resolveNoteGap } from './game/notes';
+import { generateDistinctNotes, resolveNoteGap } from './game/notes';
 
 /** Human-readable sub-category label for a character (e.g. "One Piece", "Guerre"), null when it has none. */
 function seriesLabelFor(character: { theme: string; series?: string } | null | undefined): string | null {
@@ -229,19 +229,28 @@ export class GameRoom extends DurableObject {
     await this.settleClueTurn(room);
   }
 
-  /** Advances room.themeSetterId to the next alive player, skipping past any other disconnected
-   * players too (bounded so an all-disconnected room can't loop forever) -- used both when the
-   * current setter's timer expires and when they disconnect mid-turn, for an immediate pass
-   * instead of waiting out the timer. Pure mutation: does not save or broadcast. */
-  private async settleThemeSetterTurn(room: RoomState) {
+  /** Advances room.themeSetterId to the next alive player after `fromIndex` in room.turnOrder --
+   * the same fixed, randomly-shuffled order clues follow -- skipping past any other disconnected
+   * players too (bounded so an all-disconnected room can't loop forever). Shared by entering a
+   * fresh THEME_SELECT round and by settleThemeSetterTurn's immediate hand-off (timer expiry,
+   * disconnect, kick). Pure mutation: does not save or broadcast. */
+  private advanceThemeSetter(room: RoomState, fromIndex: number) {
     const aliveIds = new Set(room.players.filter((p) => p.alive).map((p) => p.id));
-    let nextIndex = nextAliveIndex(room.turnOrder, aliveIds, room.turnOrder.indexOf(room.themeSetterId!));
+    let nextIndex = nextAliveIndex(room.turnOrder, aliveIds, fromIndex);
     for (let guard = 0; guard < room.turnOrder.length; guard++) {
       const candidate = room.players.find((p) => p.id === room.turnOrder[nextIndex]);
       if (candidate?.connected !== false) break;
       nextIndex = nextAliveIndex(room.turnOrder, aliveIds, nextIndex);
     }
     room.themeSetterId = room.turnOrder[nextIndex];
+  }
+
+  /** Advances room.themeSetterId to the next alive player, skipping past any other disconnected
+   * players too -- used both when the current setter's timer expires and when they disconnect
+   * mid-turn, for an immediate pass instead of waiting out the timer. Pure mutation: does not
+   * save or broadcast. */
+  private async settleThemeSetterTurn(room: RoomState) {
+    this.advanceThemeSetter(room, room.turnOrder.indexOf(room.themeSetterId!));
     await this.scheduleClueTimeout();
   }
 
@@ -308,13 +317,13 @@ export class GameRoom extends DurableObject {
     room.accusationVotes[playerId] = (room.accusationVotes[playerId] ?? 0) + 1;
   }
 
-  /** Enters THEME_SELECT for the round in progress: picks a random alive theme-setter and starts the shared turn timer. Reused both after ROLE_REVEAL and after an elimination resolves without a winner. */
+  /** Enters THEME_SELECT for the round in progress: hands the theme-setter role to the next alive
+   * player in room.turnOrder -- the same fixed, randomly-shuffled order clues follow -- picking up
+   * right after whoever set the last theme (or, on the very first round, starting from the top of
+   * that order). Reused both after ROLE_REVEAL and after an elimination resolves without a winner. */
   private async enterThemeSelect(room: RoomState) {
-    const aliveIds = room.players.filter((p) => p.alive).map((p) => p.id);
-    // Prefer a still-connected player so a freshly-disconnected one isn't handed a turn nobody
-    // will ever act on; fall back to any alive player if literally everyone has disconnected.
-    const connectedAliveIds = room.players.filter((p) => p.alive && p.connected).map((p) => p.id);
-    room.themeSetterId = pickRandomThemeSetter(connectedAliveIds.length > 0 ? connectedAliveIds : aliveIds, Math.random);
+    const fromIndex = room.themeSetterId ? room.turnOrder.indexOf(room.themeSetterId) : -1;
+    this.advanceThemeSetter(room, fromIndex);
     room.currentTheme = null;
     room.phase = 'THEME_SELECT';
     await this.scheduleClueTimeout();

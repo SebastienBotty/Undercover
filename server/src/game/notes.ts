@@ -52,9 +52,3 @@ export function generateDistinctNotes(
   const undercoverNote = candidates[Math.floor(random() * candidates.length)];
   return { civilNote, undercoverNote };
 }
-
-/** Uniform random pick among currently alive players, used to designate the theme-setter each round. */
-export function pickRandomThemeSetter(aliveIds: string[], random: () => number = Math.random): string {
-  const index = Math.floor(random() * aliveIds.length);
-  return aliveIds[index];
-}
