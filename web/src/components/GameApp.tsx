@@ -12,6 +12,7 @@ import { EndScreen } from '@/components/EndScreen';
 import { RoleBanner } from '@/components/RoleBanner';
 import { RoomCodeBadge } from '@/components/RoomCodeBadge';
 import { LeaveGameButton } from '@/components/LeaveGameButton';
+import { RulesButton } from '@/components/RulesButton';
 import { HostPlayerControls } from '@/components/HostPlayerControls';
 import { getStoredHostSettings, storeHostSettings, normalizeSettings, type RoomSettings } from '@/lib/hostSettings';
 
@@ -74,6 +75,7 @@ export function GameApp({ roomCode, pseudo, isHost, onLeaveRoom }: GameAppProps)
     return (
       <main className="shell">
         <RoomCodeBadge code={roomCode} />
+        <RulesButton stacked />
         <LeaveGameButton onLeave={handleLeaveVoluntarily} />
         <div className="card">
           <span className="eyebrow">Undercover</span>
@@ -206,6 +208,7 @@ export function GameApp({ roomCode, pseudo, isHost, onLeaveRoom }: GameAppProps)
   return (
     <main className="shell">
       <RoomCodeBadge code={roomState?.code ?? roomCode} />
+      <RulesButton stacked />
       <LeaveGameButton onLeave={handleLeaveVoluntarily} />
       <div className={`card${roomState?.phase === 'LOBBY' ? ' cardWide' : ''}`}>
         {errorMessage && (

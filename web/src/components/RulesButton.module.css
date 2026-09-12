@@ -1,0 +1,127 @@
+.button {
+  position: fixed;
+  top: 0.75rem;
+  right: 0.75rem;
+  z-index: 10;
+  background: var(--panel);
+  border: 1px solid var(--panel-border-light);
+  border-radius: 6px;
+  padding: 0.4rem 0.7rem;
+  font-family: var(--font-body);
+  font-size: 0.8rem;
+  color: var(--accent-strong);
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.button:hover {
+  border-color: var(--accent);
+  background: rgba(217, 164, 65, 0.12);
+}
+
+/* Clears the room code badge (RoomCodeBadge.module.css), fixed at the same top-right spot. */
+.buttonStacked {
+  top: 3.35rem;
+}
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  z-index: 20;
+}
+
+/* The one light surface in an otherwise dark-themed app: black text needs a light panel to sit
+   on, so every color below is re-picked for that instead of reusing the dark-theme tokens as-is. */
+.panel {
+  position: relative;
+  width: 100%;
+  max-width: 560px;
+  max-height: 85vh;
+  overflow-y: auto;
+  background: #f5f1e8;
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.panel :global(.eyebrow) {
+  color: var(--panel-border);
+  border-color: var(--panel-border);
+}
+
+.panel h2 {
+  color: #000000;
+}
+
+.closeButton {
+  position: absolute;
+  top: 0.85rem;
+  right: 0.85rem;
+  background: transparent;
+  border: 1px solid var(--panel-border-light);
+  border-radius: 6px;
+  width: 2rem;
+  height: 2rem;
+  color: #000000;
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.closeButton:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.body h3 {
+  margin-top: 0.5rem;
+  color: #000000;
+}
+
+.body p,
+.body li {
+  color: #000000;
+  font-size: 0.92rem;
+  line-height: 1.55;
+}
+
+.body ul,
+.body ol {
+  padding-left: 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.roleCivil {
+  /* --accent-strong is a pale gold meant for a dark background -- too washed out here. */
+  color: #8a6a1f;
+  font-weight: 600;
+}
+
+.roleUndercover {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.roleMrwhite {
+  color: #000000;
+  font-weight: 600;
+  font-style: italic;
+}

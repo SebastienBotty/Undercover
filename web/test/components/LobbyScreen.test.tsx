@@ -493,7 +493,7 @@ describe("LobbyScreen", () => {
     expect(screen.queryByLabelText(/note des civils/i)).not.toBeInTheDocument();
   });
 
-  it("switches to the note settings panel, explaining notes are assigned at random", () => {
+  it("switches to the note settings panel", () => {
     const onSettingsChange = vi.fn();
     const { rerender } = render(
       <LobbyScreen
@@ -523,39 +523,7 @@ describe("LobbyScreen", () => {
       />,
     );
     expect(screen.queryByText(/thèmes/i)).not.toBeInTheDocument();
-    expect(screen.getByText(/attribuées au hasard/i)).toBeInTheDocument();
     expect(screen.queryByLabelText(/note des civils/i)).not.toBeInTheDocument();
-  });
-
-  it("shows a short explanation for whichever mode is currently selected", () => {
-    const { rerender } = render(
-      <LobbyScreen
-        isHost={true}
-        code="ABCDE"
-        selfId="self"
-        onKickPlayer={() => {}}
-        players={players}
-        settings={baseSettings}
-        onStart={() => {}}
-        onSettingsChange={() => {}}
-      />,
-    );
-    expect(screen.getByText(/personnage à décrire/i)).toBeInTheDocument();
-
-    rerender(
-      <LobbyScreen
-        isHost={true}
-        code="ABCDE"
-        selfId="self"
-        onKickPlayer={() => {}}
-        players={players}
-        settings={{ ...baseSettings, mode: "note" }}
-        onStart={() => {}}
-        onSettingsChange={() => {}}
-      />,
-    );
-    expect(screen.getByText(/note secrète/i)).toBeInTheDocument();
-    expect(screen.queryByText(/personnage à décrire/i)).not.toBeInTheDocument();
   });
 
   it("lets the host adjust the min/max note gap in note mode", () => {

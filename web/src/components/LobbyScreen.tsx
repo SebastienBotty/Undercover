@@ -216,12 +216,6 @@ export function LobbyScreen({
     </label>
   );
 
-  const MODE_EXPLANATION: Record<GameMode, string> = {
-    classic:
-      "Chaque joueur reçoit un personnage à décrire par des indices. Les Civils partagent le même personnage, l'Undercover en a un différent mais proche.",
-    note: "Chaque joueur reçoit une note secrète (0-20) à décrire par des indices. Les Civils partagent la même note, l'Undercover en a une différente mais proche.",
-  };
-
   const noteGapControl = (
     <div className="field">
       <label htmlFor="notegap-min-slider">Écart minimum entre les notes</label>
@@ -433,11 +427,8 @@ export function LobbyScreen({
               </button>
             </div>
 
-            <p className="muted">{MODE_EXPLANATION[settings.mode]}</p>
-
             {settings.mode === "note" ? (
               <>
-                <p className="muted">Les notes des Civils et des Undercover sont attribuées au hasard.</p>
                 {noteGapControl}
                 {revealRoleControl}
                 {timerControl}

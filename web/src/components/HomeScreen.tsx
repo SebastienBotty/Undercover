@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { usePseudo } from '@/lib/usePseudo';
+import { RulesButton } from '@/components/RulesButton';
 import styles from './HomeScreen.module.css';
 
 interface HomeScreenProps {
@@ -18,6 +19,7 @@ export function HomeScreen({ onEnterRoom, notice }: HomeScreenProps) {
   if (!pseudo) {
     return (
       <main className="shell">
+        <RulesButton />
         <div className="card">
           <span className="eyebrow">Jeu de société en ligne</span>
           <h1 className={styles.title}>Undercover</h1>
@@ -69,6 +71,7 @@ export function HomeScreen({ onEnterRoom, notice }: HomeScreenProps) {
 
   return (
     <main className="shell">
+      <RulesButton />
       <div className="card">
         <span className="eyebrow">Undercover</span>
         <h2>Prêt à jouer, {pseudo} ?</h2>
