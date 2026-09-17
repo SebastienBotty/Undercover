@@ -87,11 +87,24 @@ export interface RoomState {
    * restricted to the previously-tied leaders. Null means any alive player is a valid target
    * (the normal case, and also the fallback once a runoff itself ties again). */
   voteCandidateIds: string[] | null;
+  /** Who's listed first in the vote screen for the vote phase currently open -- rotates to the
+   * next alive player in turnOrder each time a fresh vote opens after a clue round (not on every
+   * tie-breaking runoff, which keeps resolving the same vote), so the same player isn't always
+   * shown first. Null before the game's first vote has ever opened. */
+  voteOrderStartId: string | null;
   round: number;
   winner: Role | null;
   lastEliminatedId: string | null;
-  /** Unix ms timestamp when the current clue/theme submission window closes. Null outside CLUE_ROUND/THEME_SELECT. */
+  /** Unix ms timestamp when the current clue/theme submission window closes. Null outside CLUE_ROUND/THEME_SELECT.
+   * While a disconnect grace window is running (see pausedTurnRemainingMs), this instead points at
+   * when that grace window ends -- the normal timer is paused, not simply running in the background. */
   turnDeadline: number | null;
+  /** How much time (ms) was left on the current turn-holder's normal clue/theme timer when they
+   * disconnected and armDisconnectGrace paused it in favor of a flat reconnect grace window -- null
+   * when nothing is paused (nobody's mid-grace right now), or when there was nothing to pause
+   * because the host had that timer disabled. Restored verbatim (not a fresh full timer) if they
+   * reconnect before the grace window runs out. */
+  pausedTurnRemainingMs: number | null;
   /** Unix ms timestamp when the vote auto-resolves early because every alive player has voted.
    * Null until that happens, and reset to null whenever a vote is retracted or the phase changes. */
   allVotedDeadline: number | null;
@@ -105,8 +118,13 @@ export interface RoomState {
   currentTheme: string | null;
   /** History of every theme submitted so far, one per round ('note' mode only). */
   themes: ThemeEntry[];
-  /** Client ids permanently rejected on any future JOIN_ROOM attempt (host kick or the player's
-   * own explicit LEAVE_ROOM), including across a RESTART_GAME back to LOBBY. A player who merely
-   * loses connection (closed tab, dropped network) is NOT added here -- they can always rejoin. */
+  /** Client ids permanently rejected on any future JOIN_ROOM attempt because the host kicked them.
+   * Survives a RESTART_GAME back to LOBBY -- a kick is for good. A player who merely loses
+   * connection (closed tab, dropped network) is NOT added here -- they can always rejoin. */
   bannedClientIds: string[];
+  /** Client ids rejected on JOIN_ROOM because they explicitly left mid-game (LEAVE_ROOM sent
+   * while phase !== 'LOBBY'), so they can't sneak back into the same game after seeing their role.
+   * Cleared on RESTART_GAME -- they're welcome back for the next game in this room. Leaving from
+   * the LOBBY itself never lands here: nothing to protect against, so they can rejoin right away. */
+  leftClientIds: string[];
 }

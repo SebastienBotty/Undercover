@@ -122,6 +122,80 @@ describe('ClueRoundScreen', () => {
     expect(screen.queryByText(/thème/i)).not.toBeInTheDocument();
   });
 
+  it("shows a reconnect countdown next to the current turn-holder's name when they're disconnected", () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date(2024, 0, 1, 0, 0, 0));
+      render(
+        <ClueRoundScreen
+          players={[{ id: 'p1', name: 'Alice' }, { id: 'p2', name: 'Bob', connected: false }]}
+          turnOrder={['p1', 'p2']}
+          currentTurnIndex={1}
+          clues={[]}
+          round={1}
+          turnDeadline={Date.now() + 30_000}
+          selfId="p1"
+          onSubmitClue={() => {}}
+        />
+      );
+      expect(screen.getByText(/au tour de bob/i)).toBeInTheDocument();
+      expect(screen.getByText(/⏳ 30s/)).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("shows the paused normal timer (frozen) in the header instead of the ticking reconnect grace while someone's disconnected", () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date(2024, 0, 1, 0, 0, 0));
+      render(
+        <ClueRoundScreen
+          players={[{ id: 'p1', name: 'Alice' }, { id: 'p2', name: 'Bob', connected: false }]}
+          turnOrder={['p1', 'p2']}
+          currentTurnIndex={1}
+          clues={[]}
+          round={1}
+          turnDeadline={Date.now() + 30_000}
+          pausedTurnRemainingMs={89_000}
+          selfId="p1"
+          onSubmitClue={() => {}}
+        />
+      );
+      // Header shows the frozen 89s from the paused normal timer, not the ticking 30s grace.
+      expect(screen.getByText('⏱ 89s')).toBeInTheDocument();
+      // The reconnect badge next to Bob's name still shows the real, ticking grace countdown.
+      expect(screen.getByText(/⏳ 30s/)).toBeInTheDocument();
+
+      vi.setSystemTime(new Date(2024, 0, 1, 0, 0, 5));
+      act(() => {
+        vi.advanceTimersByTime(250);
+      });
+      // The header stays frozen at 89s (it isn't derived from turnDeadline while paused)...
+      expect(screen.getByText('⏱ 89s')).toBeInTheDocument();
+      // ...while the grace badge keeps ticking down normally.
+      expect(screen.getByText(/⏳ 25s/)).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("shows no reconnect countdown when the current turn-holder is connected", () => {
+    render(
+      <ClueRoundScreen
+        players={[{ id: 'p1', name: 'Alice' }, { id: 'p2', name: 'Bob', connected: true }]}
+        turnOrder={['p1', 'p2']}
+        currentTurnIndex={1}
+        clues={[]}
+        round={1}
+        turnDeadline={Date.now() + 30_000}
+        selfId="p1"
+        onSubmitClue={() => {}}
+      />
+    );
+    expect(screen.queryByText(/⏳/)).not.toBeInTheDocument();
+  });
+
   it('shows no countdown when there is no turn deadline', () => {
     render(
       <ClueRoundScreen

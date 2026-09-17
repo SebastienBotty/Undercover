@@ -19,16 +19,19 @@ function makeRoom(overrides: Partial<RoomState> = {}): RoomState {
     votes: {},
     accusationVotes: {},
     voteCandidateIds: null,
+    voteOrderStartId: null,
     round: 1,
     winner: null,
     lastEliminatedId: 'p3',
     turnDeadline: null,
+    pausedTurnRemainingMs: null,
     allVotedDeadline: null,
     noEliminationReason: null,
     themeSetterId: null,
     currentTheme: null,
     themes: [],
     bannedClientIds: [],
+    leftClientIds: [],
     ...overrides,
   };
 }
@@ -121,6 +124,22 @@ describe('buildSnapshot', () => {
     const snapshot = buildSnapshot(room, 'p1');
     expect(snapshot.accusationVotes).toEqual({ p2: 2 });
     expect(snapshot.voteCandidateIds).toEqual(['p1', 'p2']);
+  });
+
+  it('passes through pausedTurnRemainingMs unchanged', () => {
+    const snapshot = buildSnapshot(makeRoom({ pausedTurnRemainingMs: 45_000 }), 'p1');
+    expect(snapshot.pausedTurnRemainingMs).toBe(45_000);
+  });
+
+  it('rotates voteDisplayOrder to start at voteOrderStartId, leaving turnOrder itself untouched', () => {
+    const snapshot = buildSnapshot(makeRoom({ turnOrder: ['p1', 'p2', 'p3'], voteOrderStartId: 'p2' }), 'p1');
+    expect(snapshot.turnOrder).toEqual(['p1', 'p2', 'p3']);
+    expect(snapshot.voteDisplayOrder).toEqual(['p2', 'p3', 'p1']);
+  });
+
+  it('makes voteDisplayOrder match turnOrder when no vote has opened yet (voteOrderStartId null)', () => {
+    const snapshot = buildSnapshot(makeRoom({ turnOrder: ['p1', 'p2', 'p3'], voteOrderStartId: null }), 'p1');
+    expect(snapshot.voteDisplayOrder).toEqual(['p1', 'p2', 'p3']);
   });
 
   it('reveals note only for the requesting player among the alive players, mirroring character', () => {

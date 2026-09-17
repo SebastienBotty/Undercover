@@ -4,6 +4,7 @@ import { useGameSocket } from '@/lib/useGameSocket';
 import { getOrCreateClientId } from '@/lib/clientId';
 import { LobbyScreen } from '@/components/LobbyScreen';
 import { RoleRevealScreen } from '@/components/RoleRevealScreen';
+import { PhaseTransition } from '@/components/PhaseTransition';
 import { ThemeSelectScreen } from '@/components/ThemeSelectScreen';
 import { ClueRoundScreen } from '@/components/ClueRoundScreen';
 import { VoteScreen } from '@/components/VoteScreen';
@@ -33,6 +34,28 @@ export function GameApp({ roomCode, pseudo, isHost, onLeaveRoom }: GameAppProps)
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [settings, setSettings] = useState<RoomSettings>(() => getStoredHostSettings());
   const joinedRef = useRef(false);
+
+  // The curtain transition only plays for these five moments -- not on every phase change --
+  // so it stays a punctuation mark instead of a tax on every round.
+  const prevPhaseRef = useRef<string | undefined>(undefined);
+  // Null until the first real trigger fires -- see PhaseTransition's phaseKey prop for why.
+  const [curtainKey, setCurtainKey] = useState<number | null>(null);
+  useEffect(() => {
+    const phase = roomState?.phase as string | undefined;
+    if (!phase) return;
+    const prevPhase = prevPhaseRef.current;
+    if (phase !== prevPhase) {
+      const isRoomArrival = phase === 'LOBBY';
+      const isGameStart = prevPhase === 'LOBBY' && phase !== 'LOBBY';
+      const isVoteStart = phase === 'VOTE';
+      const isVoteEnd = prevPhase === 'VOTE' && phase !== 'VOTE';
+      const isGameEnd = phase === 'END';
+      if (isRoomArrival || isGameStart || isVoteStart || isVoteEnd || isGameEnd) {
+        setCurtainKey((k) => (k ?? 0) + 1);
+      }
+      prevPhaseRef.current = phase;
+    }
+  }, [roomState?.phase]);
 
   useEffect(() => {
     if (status === 'open' && !joinedRef.current) {
@@ -71,19 +94,7 @@ export function GameApp({ roomCode, pseudo, isHost, onLeaveRoom }: GameAppProps)
     onLeaveRoom();
   }
 
-  if (status === 'connecting' || status === 'idle') {
-    return (
-      <main className="shell">
-        <RoomCodeBadge code={roomCode} />
-        <RulesButton stacked />
-        <LeaveGameButton onLeave={handleLeaveVoluntarily} />
-        <div className="card">
-          <span className="eyebrow">Undercover</span>
-          <p className="muted">Connexion à la salle {roomCode}...</p>
-        </div>
-      </main>
-    );
-  }
+  const isConnecting = status === 'connecting' || status === 'idle';
 
   function handleSettingsChange(next: RoomSettings) {
     setSettings(next);
@@ -100,6 +111,14 @@ export function GameApp({ roomCode, pseudo, isHost, onLeaveRoom }: GameAppProps)
   const lobbySettings = amHost ? settings : normalizeSettings(roomState?.settings);
 
   function renderPhase() {
+    if (isConnecting) {
+      return (
+        <>
+          <span className="eyebrow">Undercover</span>
+          <p className="muted">Connexion à la salle {roomCode}...</p>
+        </>
+      );
+    }
     if (!roomState) return <p className="muted">En attente des données de la salle...</p>;
     if (roomState.phase === 'LOBBY') {
       return (
@@ -136,6 +155,7 @@ export function GameApp({ roomCode, pseudo, isHost, onLeaveRoom }: GameAppProps)
           round={roomState.round}
           themeSetterId={roomState.themeSetterId}
           turnDeadline={roomState.turnDeadline}
+          pausedTurnRemainingMs={roomState.pausedTurnRemainingMs}
           accusationVotes={roomState.accusationVotes}
           selfId={getOrCreateClientId()}
           onSubmitTheme={(text) => send({ type: 'SUBMIT_THEME', text })}
@@ -151,6 +171,7 @@ export function GameApp({ roomCode, pseudo, isHost, onLeaveRoom }: GameAppProps)
           clues={roomState.clues}
           round={roomState.round}
           turnDeadline={roomState.turnDeadline}
+          pausedTurnRemainingMs={roomState.pausedTurnRemainingMs}
           themes={roomState.themes}
           currentTheme={roomState.currentTheme}
           accusationVotes={roomState.accusationVotes}
@@ -163,7 +184,7 @@ export function GameApp({ roomCode, pseudo, isHost, onLeaveRoom }: GameAppProps)
       return (
         <VoteScreen
           players={roomState.players}
-          turnOrder={roomState.turnOrder}
+          turnOrder={roomState.voteDisplayOrder ?? roomState.turnOrder}
           clues={roomState.clues}
           round={roomState.round}
           themes={roomState.themes}
@@ -187,6 +208,7 @@ export function GameApp({ roomCode, pseudo, isHost, onLeaveRoom }: GameAppProps)
           noEliminationReason={roomState.noEliminationReason}
           selfId={getOrCreateClientId()}
           mode={roomState.settings?.mode}
+          revealRoleOnElimination={roomState.settings?.revealRoleOnElimination ?? true}
           onMrWhiteGuess={(guess) => send({ type: 'MR_WHITE_GUESS', guess })}
         />
       );
@@ -232,7 +254,7 @@ export function GameApp({ roomCode, pseudo, isHost, onLeaveRoom }: GameAppProps)
             note={me?.note ?? null}
           />
         )}
-        {renderPhase()}
+        <PhaseTransition phaseKey={curtainKey === null ? null : String(curtainKey)}>{renderPhase()}</PhaseTransition>
       </div>
     </main>
   );

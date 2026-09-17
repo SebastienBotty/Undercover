@@ -154,7 +154,7 @@ describe('GameApp', () => {
       })
     );
     render(<GameApp roomCode="ABCDE" pseudo="Alice" isHost={false} onLeaveRoom={() => {}} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Bob' }));
+    fireEvent.click(screen.getByRole('button', { name: /bob/i }));
     expect(send).toHaveBeenCalledWith({ type: 'SUBMIT_VOTE', targetId: 'p2' });
   });
 

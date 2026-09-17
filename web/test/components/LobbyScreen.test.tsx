@@ -137,7 +137,6 @@ describe("LobbyScreen", () => {
     expect(screen.getByLabelText(/mr\. white/i)).toBeDisabled();
     expect(screen.getByRole("radio", { name: /classique/i })).toBeDisabled();
     expect(screen.getByRole("radio", { name: /^note$/i })).toBeDisabled();
-    expect(screen.getByLabelText(/^timer$/i)).toBeDisabled();
     expect(screen.getByLabelText(/révéler le rôle à l'élimination/i)).toBeDisabled();
     expect(screen.getByText(/seul l'hôte peut modifier les réglages/i)).toBeInTheDocument();
   });
@@ -197,7 +196,7 @@ describe("LobbyScreen", () => {
       />,
     );
     expect(screen.getByLabelText(/mr\. white/i)).toBeDisabled();
-    expect(screen.getByText(/nécessite 5 joueurs minimum/i)).toBeInTheDocument();
+    expect(screen.getByText(/5 joueurs minimum/i)).toBeInTheDocument();
   });
 
   it("re-enables Mr. White once the room reaches 5 players", () => {
@@ -214,7 +213,7 @@ describe("LobbyScreen", () => {
       />,
     );
     expect(screen.getByLabelText(/mr\. white/i)).not.toBeDisabled();
-    expect(screen.queryByText(/nécessite 5 joueurs minimum/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/5 joueurs minimum/i)).not.toBeInTheDocument();
   });
 
   it("automatically turns Mr. White off if the player count drops below the minimum", () => {
@@ -324,7 +323,7 @@ describe("LobbyScreen", () => {
     );
   });
 
-  it("hides the timer settings panel until the Timer checkbox is checked", () => {
+  it("shows the timer settings panel directly, with no toggle to expand it", () => {
     render(
       <LobbyScreen
         isHost={true}
@@ -337,10 +336,6 @@ describe("LobbyScreen", () => {
         onSettingsChange={() => {}}
       />,
     );
-    expect(screen.queryByText(/temps d'indice/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/temps de vote/i)).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByLabelText(/^timer$/i));
     expect(screen.getByText(/temps d'indice/i)).toBeInTheDocument();
     expect(screen.getByText(/temps de vote/i)).toBeInTheDocument();
   });
@@ -358,7 +353,6 @@ describe("LobbyScreen", () => {
         onSettingsChange={() => {}}
       />,
     );
-    fireEvent.click(screen.getByLabelText(/^timer$/i));
     expect(screen.getByLabelText(/durée du temps d'indice/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/durée du temps de vote/i)).toBeInTheDocument();
 
@@ -392,9 +386,9 @@ describe("LobbyScreen", () => {
         onSettingsChange={onSettingsChange}
       />,
     );
-    fireEvent.click(screen.getByLabelText(/^timer$/i));
-
-    fireEvent.change(screen.getByLabelText(/durée du temps d'indice/i), { target: { value: "45" } });
+    fireEvent.change(screen.getByLabelText(/durée du temps d'indice/i), {
+      target: { value: "45" },
+    });
     expect(onSettingsChange).toHaveBeenCalledWith(
       expect.objectContaining({ clueTimerSeconds: 45 }),
     );
@@ -419,8 +413,6 @@ describe("LobbyScreen", () => {
         onSettingsChange={onSettingsChange}
       />,
     );
-    fireEvent.click(screen.getByLabelText(/^timer$/i));
-
     fireEvent.change(screen.getByLabelText(/durée du temps de vote/i), { target: { value: "90" } });
     expect(onSettingsChange).toHaveBeenCalledWith(
       expect.objectContaining({ voteTimerSeconds: 90 }),
@@ -446,8 +438,6 @@ describe("LobbyScreen", () => {
         onSettingsChange={onSettingsChange}
       />,
     );
-    fireEvent.click(screen.getByLabelText(/^timer$/i));
-
     fireEvent.change(screen.getByLabelText(/nombre de manches d'indices avant chaque vote/i), {
       target: { value: "3" },
     });
@@ -540,10 +530,14 @@ describe("LobbyScreen", () => {
         onSettingsChange={onSettingsChange}
       />,
     );
-    fireEvent.change(screen.getByLabelText(/écart minimum entre les notes/i), { target: { value: "4" } });
+    fireEvent.change(screen.getByLabelText(/écart minimum entre les notes/i), {
+      target: { value: "4" },
+    });
     expect(onSettingsChange).toHaveBeenCalledWith(expect.objectContaining({ noteGapMin: 4 }));
 
-    fireEvent.change(screen.getByLabelText(/écart maximum entre les notes/i), { target: { value: "10" } });
+    fireEvent.change(screen.getByLabelText(/écart maximum entre les notes/i), {
+      target: { value: "10" },
+    });
     expect(onSettingsChange).toHaveBeenCalledWith(expect.objectContaining({ noteGapMax: 10 }));
   });
 

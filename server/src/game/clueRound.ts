@@ -10,6 +10,15 @@ export function nextAliveIndex(turnOrder: string[], alivePlayerIds: Set<string>,
   throw new Error('No alive players left in the turn order');
 }
 
+/** Rotates turnOrder so it starts at `startId` (wrapping the rest around after it), for display
+ * purposes only -- the underlying turnOrder driving actual clue/theme turns is never touched.
+ * Returns turnOrder unchanged when startId is null or not found in it. */
+export function rotateTurnOrderFrom(turnOrder: string[], startId: string | null): string[] {
+  const startIndex = startId ? turnOrder.indexOf(startId) : -1;
+  if (startIndex <= 0) return turnOrder;
+  return [...turnOrder.slice(startIndex), ...turnOrder.slice(0, startIndex)];
+}
+
 export function isClueRoundComplete(clues: Pick<Clue, 'playerId' | 'round'>[], round: number, alivePlayerIds: Set<string>): boolean {
   const submitted = new Set(clues.filter((c) => c.round === round).map((c) => c.playerId));
   for (const id of alivePlayerIds) {

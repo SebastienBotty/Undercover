@@ -191,7 +191,7 @@ describe('GameRoom game flow', () => {
     expect(error).toMatchObject({ type: 'ERROR', code: 'NOT_YOUR_TURN' });
   });
 
-  it('passes a player\'s clue turn immediately when they disconnect mid-turn, instead of eliminating them', async () => {
+  it('gives a disconnected current turn-holder a 30s reconnect grace before passing their turn', async () => {
     const code = 'FLOW-DISCONNECT-CURRENT-TURN';
     const id = env.GAME_ROOM.idFromName(code);
     const stub = env.GAME_ROOM.get(id);
@@ -221,15 +221,141 @@ describe('GameRoom game flow', () => {
     sockets[currentPlayerId].close();
     const [snapshot] = await afterClose;
 
+    // Disconnecting mid-turn does NOT pass the turn right away -- it's still their turn, just
+    // with a short (<=30s) grace window running instead of the normal clue timer.
     expect(snapshot.phase).toBe('CLUE_ROUND');
-    const skippedPlayer = snapshot.players.find((p: any) => p.id === currentPlayerId);
+    const disconnectedPlayer = snapshot.players.find((p: any) => p.id === currentPlayerId);
+    expect(disconnectedPlayer.connected).toBe(false);
+    expect(disconnectedPlayer.alive).toBe(true);
+    expect(snapshot.turnOrder[snapshot.currentTurnIndex]).toBe(currentPlayerId);
+    expect(snapshot.turnDeadline - Date.now()).toBeLessThanOrEqual(30_000);
+
+    // They never reconnect -- once the grace window's alarm fires, they're skipped exactly like a
+    // normal clue-timer timeout (accusation vote, empty clue, turn passed) rather than eliminated.
+    const afterGrace = Promise.all(others.map((s) => waitForMessage(s)));
+    await runDurableObjectAlarm(stub);
+    const [afterGraceSnap] = await afterGrace;
+
+    expect(afterGraceSnap.phase).toBe('CLUE_ROUND');
+    const skippedPlayer = afterGraceSnap.players.find((p: any) => p.id === currentPlayerId);
     expect(skippedPlayer.connected).toBe(false);
     expect(skippedPlayer.alive).toBe(true); // passed, not eliminated
-    expect(snapshot.turnOrder[snapshot.currentTurnIndex]).not.toBe(currentPlayerId);
-    const recordedClue = snapshot.clues.find(
+    expect(afterGraceSnap.turnOrder[afterGraceSnap.currentTurnIndex]).not.toBe(currentPlayerId);
+    expect(afterGraceSnap.accusationVotes[currentPlayerId]).toBe(1);
+    const recordedClue = afterGraceSnap.clues.find(
       (c: any) => c.playerId === currentPlayerId && c.round === clueRoundSnap.round
     );
     expect(recordedClue?.text).toBe('');
+  });
+
+  it('pauses the normal turn timer on disconnect and resumes it with the exact time it had left, if they reconnect within the grace window', async () => {
+    const code = 'FLOW-DISCONNECT-GRACE-RECONNECT';
+    const id = env.GAME_ROOM.idFromName(code);
+    const stub = env.GAME_ROOM.get(id);
+
+    const wsA = await joinPlayer(stub, code, 'Alice', 'a', true);
+    const wsB = await joinPlayer(stub, code, 'Bob', 'b', false, [wsA]);
+    const wsC = await joinPlayer(stub, code, 'Carl', 'c', false, [wsA, wsB]);
+    const sockets: Record<string, WebSocket> = { a: wsA, b: wsB, c: wsC };
+
+    const started = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+    wsA.send(
+      JSON.stringify({
+        // A clue timer well above the 30s reconnect grace, so the two are unambiguous to tell apart.
+        settings: { themes: ['anime'], similarityLevel: 'none', mrWhiteEnabled: false, clueTimerEnabled: true, clueTimerSeconds: 90 },
+        type: 'START_GAME',
+      })
+    );
+    await started;
+
+    const afterAlarmA = waitForMessage(wsA);
+    await runDurableObjectAlarm(stub);
+    const clueRoundSnap = await afterAlarmA;
+    const turnOrder = clueRoundSnap.turnOrder as string[];
+    const currentPlayerId = turnOrder[clueRoundSnap.currentTurnIndex];
+    const others = Object.values(sockets).filter((s) => s !== sockets[currentPlayerId]);
+
+    // Let a real second of the 90s timer tick by before disconnecting, so a "fresh timer" bug
+    // (roughly 90s left) is clearly distinguishable from a correctly paused-and-resumed one
+    // (roughly 89s left) once they reconnect below.
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+
+    const afterClose = Promise.all(others.map((s) => waitForMessage(s)));
+    sockets[currentPlayerId].close();
+    const [closeSnap] = await afterClose;
+    // The 90s clue timer got paused in favor of the flat 30s reconnect grace on disconnect.
+    expect(closeSnap.turnDeadline - Date.now()).toBeLessThanOrEqual(30_000);
+
+    const reconnectRes = await connect(stub);
+    const reconnectWs = reconnectRes.webSocket!;
+    reconnectWs.accept();
+    const reconnectSnap = waitForMessage(reconnectWs);
+    reconnectWs.send(
+      JSON.stringify({ type: 'JOIN_ROOM', code, name: 'Reconnected', clientId: currentPlayerId, isHost: false })
+    );
+    const snapshot = await reconnectSnap;
+
+    expect(snapshot.phase).toBe('CLUE_ROUND');
+    const reconnectedPlayer = snapshot.players.find((p: any) => p.id === currentPlayerId);
+    expect(reconnectedPlayer.connected).toBe(true);
+    expect(snapshot.turnOrder[snapshot.currentTurnIndex]).toBe(currentPlayerId);
+    // Resumed with ~89s left (90s minus the ~1s that elapsed before disconnecting), clearly more
+    // than the flat 30s grace but clearly less than a fresh 90s window would give back.
+    const remainingMs = snapshot.turnDeadline - Date.now();
+    expect(remainingMs).toBeGreaterThan(60_000);
+    expect(remainingMs).toBeLessThan(89_900);
+
+    // Now that they're back, submitting their clue works normally -- no lingering accusation vote.
+    const clueSnapPromise = waitForMessage(reconnectWs);
+    reconnectWs.send(JSON.stringify({ type: 'SUBMIT_CLUE', text: 'back!' }));
+    const clueSnap = await clueSnapPromise;
+    expect(clueSnap.accusationVotes[currentPlayerId] ?? 0).toBe(0);
+  });
+
+  it('falls back to a normal fresh timer on reconnect if the host had the clue timer disabled when they disconnected', async () => {
+    const code = 'FLOW-DISCONNECT-GRACE-NO-TIMER';
+    const id = env.GAME_ROOM.idFromName(code);
+    const stub = env.GAME_ROOM.get(id);
+
+    const wsA = await joinPlayer(stub, code, 'Alice', 'a', true);
+    const wsB = await joinPlayer(stub, code, 'Bob', 'b', false, [wsA]);
+    const wsC = await joinPlayer(stub, code, 'Carl', 'c', false, [wsA, wsB]);
+    const sockets: Record<string, WebSocket> = { a: wsA, b: wsB, c: wsC };
+
+    const started = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+    wsA.send(
+      JSON.stringify({
+        settings: { themes: ['anime'], similarityLevel: 'none', mrWhiteEnabled: false, clueTimerEnabled: false },
+        type: 'START_GAME',
+      })
+    );
+    await started;
+
+    const afterAlarmA = waitForMessage(wsA);
+    await runDurableObjectAlarm(stub);
+    const clueRoundSnap = await afterAlarmA;
+    expect(clueRoundSnap.turnDeadline).toBeNull(); // no timer running -- nothing to pause
+    const turnOrder = clueRoundSnap.turnOrder as string[];
+    const currentPlayerId = turnOrder[clueRoundSnap.currentTurnIndex];
+    const others = Object.values(sockets).filter((s) => s !== sockets[currentPlayerId]);
+
+    const afterClose = Promise.all(others.map((s) => waitForMessage(s)));
+    sockets[currentPlayerId].close();
+    const [closeSnap] = await afterClose;
+    // Still gets the reconnect grace window even though the host disabled the normal timer.
+    expect(closeSnap.turnDeadline - Date.now()).toBeLessThanOrEqual(30_000);
+
+    const reconnectRes = await connect(stub);
+    const reconnectWs = reconnectRes.webSocket!;
+    reconnectWs.accept();
+    const reconnectSnap = waitForMessage(reconnectWs);
+    reconnectWs.send(
+      JSON.stringify({ type: 'JOIN_ROOM', code, name: 'Reconnected', clientId: currentPlayerId, isHost: false })
+    );
+    const snapshot = await reconnectSnap;
+
+    // Nothing was paused (the timer was off), so reconnecting just goes back to "no timer at all".
+    expect(snapshot.turnDeadline).toBeNull();
   });
 
   it('skips a disconnected player\'s upcoming turn the moment the rotation reaches it, without waiting for the timer', async () => {
@@ -1436,10 +1562,13 @@ describe('GameRoom game flow', () => {
     const wsD = await joinPlayer(stub, code, 'Dora', 'd', false, [wsA, wsB, wsC]);
     const sockets: Record<string, WebSocket> = { a: wsA, b: wsB, c: wsC, d: wsD };
 
-    async function playOneThemeAndClueRound(passNumber: number) {
-      const afterAlarmA = waitForMessage(wsA);
-      await runDurableObjectAlarm(stub);
-      const themeSelectSnap = await afterAlarmA;
+    // Takes the THEME_SELECT snapshot the room is already sitting in (from ROLE_REVEAL's alarm for
+    // pass 1, or from the previous pass's clue round finishing straight into the next theme select
+    // for later passes) and plays it out: submit the theme, then run a full clue round. Doesn't
+    // fire the DO alarm itself for passes after the first -- that alarm is the *next* theme
+    // setter's own not-yet-due turn timer, and firing it early would wrongly record an accusation
+    // vote against them, as if they'd actually timed out.
+    async function playOneThemeAndClueRound(passNumber: number, themeSelectSnap: any) {
       const setterId = themeSelectSnap.themeSetterId as string;
       const afterTheme = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
       sockets[setterId].send(JSON.stringify({ type: 'SUBMIT_THEME', text: `theme-${passNumber}` }));
@@ -1457,8 +1586,12 @@ describe('GameRoom game flow', () => {
     );
     await started;
 
-    await playOneThemeAndClueRound(1);
-    const voteSnaps = await playOneThemeAndClueRound(2);
+    const afterAlarmA = waitForMessage(wsA);
+    await runDurableObjectAlarm(stub); // ROLE_REVEAL -> THEME_SELECT
+    const themeSelectSnap1 = await afterAlarmA;
+
+    const pass1Results = await playOneThemeAndClueRound(1, themeSelectSnap1);
+    const voteSnaps = await playOneThemeAndClueRound(2, pass1Results[0]);
     expect(voteSnaps[0].phase).toBe('VOTE');
 
     // Two pairs vote for each other -- a 4-way tie among all 4 alive players (nobody has more
@@ -2107,7 +2240,7 @@ describe('GameRoom game flow', () => {
     expect(resolvedSnap.lastEliminatedId).toBe('c');
   });
 
-  it('bans a player who explicitly LEAVE_ROOMs from the lobby, unlike a player who just disconnects', async () => {
+  it('lets a player who explicitly LEAVE_ROOMs from the lobby rejoin right away', async () => {
     const code = 'FLOW-LEAVE-LOBBY';
     const id = env.GAME_ROOM.idFromName(code);
     const stub = env.GAME_ROOM.get(id);
@@ -2121,16 +2254,17 @@ describe('GameRoom game flow', () => {
     const snapAfterLeave = await afterLeave;
     expect(snapAfterLeave.players.find((p: any) => p.id === 'b')).toBeUndefined();
 
-    // Unlike a plain disconnect, a fresh connection with the same clientId is rejected outright.
+    // A lobby leave is a no-op ban-wise -- a fresh connection with the same clientId is welcomed
+    // back in, same as anyone who merely disconnected from the lobby.
     const res = await connect(stub);
     const rejoinWs = res.webSocket!;
     rejoinWs.accept();
-    const rejoinError = waitForMessage(rejoinWs);
+    const rejoinSnap = waitForMessage(rejoinWs);
     rejoinWs.send(JSON.stringify({ type: 'JOIN_ROOM', code, name: 'Bob', clientId: 'b', isHost: false }));
-    expect(await rejoinError).toMatchObject({ type: 'ERROR', code: 'BANNED' });
+    expect((await rejoinSnap).players.find((p: any) => p.id === 'b')).toBeDefined();
   });
 
-  it('bans a player who explicitly LEAVE_ROOMs mid-game, but still lets them be voted out normally first', async () => {
+  it('bans a player who explicitly LEAVE_ROOMs mid-game only until the room returns to LOBBY', async () => {
     const code = 'FLOW-LEAVE-MIDGAME';
     const id = env.GAME_ROOM.idFromName(code);
     const stub = env.GAME_ROOM.get(id);
@@ -2166,6 +2300,31 @@ describe('GameRoom game flow', () => {
     const rejoinError = waitForMessage(rejoinWs);
     rejoinWs.send(JSON.stringify({ type: 'JOIN_ROOM', code, name: 'Bob', clientId: 'b', isHost: false }));
     expect(await rejoinError).toMatchObject({ type: 'ERROR', code: 'BANNED' });
+
+    // Kicking Carl ends the game outright: with 3 players and no Mr. White, any single elimination
+    // decides the outcome regardless of role (see checkWinCondition), so this reaches END without
+    // needing to know who's actually Undercover.
+    const afterKick = Promise.all([waitForMessage(wsA), waitForMessage(wsC)]);
+    wsA.send(JSON.stringify({ type: 'KICK_PLAYER', playerId: 'c' }));
+    const [kickSnap] = await afterKick;
+    expect(kickSnap.phase).toBe('END');
+
+    // Carl's own socket was already closed by the kick's closeAndNotify -- only Alice is left to
+    // observe the restart broadcast.
+    const afterRestart = waitForMessage(wsA);
+    wsA.send(JSON.stringify({ type: 'RESTART_GAME' }));
+    const restartSnap = await afterRestart;
+    expect(restartSnap.phase).toBe('LOBBY');
+
+    // Back in the lobby for the next game, Bob's mid-game leave no longer holds -- he can rejoin.
+    const rejoinRes = await connect(stub);
+    const rejoinWs2 = rejoinRes.webSocket!;
+    rejoinWs2.accept();
+    const rejoinSnap = waitForMessage(rejoinWs2);
+    rejoinWs2.send(JSON.stringify({ type: 'JOIN_ROOM', code, name: 'Bob', clientId: 'b', isHost: false }));
+    const bobRejoined = (await rejoinSnap).players.find((p: any) => p.id === 'b');
+    expect(bobRejoined).toBeDefined();
+    expect(bobRejoined.connected).toBe(true);
   });
 
   it('lets a player who merely disconnects mid-game (no LEAVE_ROOM) reconnect back into the same seat', async () => {
@@ -2252,5 +2411,73 @@ describe('GameRoom game flow', () => {
     );
     const snapA = await started;
     expect(snapA.settings.cluePassesPerVote).toBe(5);
+  });
+
+  it("rotates the vote screen's display order to the next alive player each fresh vote, but not during a tie-breaking runoff", async () => {
+    const code = 'FLOW-VOTE-ORDER-ROTATE';
+    const id = env.GAME_ROOM.idFromName(code);
+    const stub = env.GAME_ROOM.get(id);
+
+    const wsA = await joinPlayer(stub, code, 'Alice', 'a', true);
+    const wsB = await joinPlayer(stub, code, 'Bob', 'b', false, [wsA]);
+    const wsC = await joinPlayer(stub, code, 'Carl', 'c', false, [wsA, wsB]);
+    const wsD = await joinPlayer(stub, code, 'Dora', 'd', false, [wsA, wsB, wsC]);
+    const sockets: Record<string, WebSocket> = { a: wsA, b: wsB, c: wsC, d: wsD };
+
+    const started = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+    wsA.send(
+      JSON.stringify({
+        type: 'START_GAME',
+        settings: { themes: ['anime'], similarityLevel: 'none', mrWhiteEnabled: false, cluePassesPerVote: 1 },
+      })
+    );
+    await started;
+
+    const afterAlarmA = waitForMessage(wsA);
+    await runDurableObjectAlarm(stub);
+    const clueRoundSnap = await afterAlarmA;
+    const turnOrder = clueRoundSnap.turnOrder as string[];
+
+    // First vote ever in the game: nothing to rotate from yet, so the display order matches
+    // turnOrder as-is.
+    const [voteSnap1] = await submitFullClueRound(sockets, turnOrder, 1);
+    expect(voteSnap1.phase).toBe('VOTE');
+    expect(voteSnap1.voteDisplayOrder).toEqual(turnOrder);
+
+    // Nobody votes -- a genuine "no_votes" reveal, then back to CLUE_ROUND for another pass.
+    for (const playerId of turnOrder) {
+      const next = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+      sockets[playerId].send(JSON.stringify({ type: 'SUBMIT_VOTE', targetId: null }));
+      await next;
+    }
+    const [noElimSnap] = await resolveVoteTimer(stub, sockets);
+    expect(noElimSnap.phase).toBe('ELIMINATION');
+    const [backToClueSnap] = await resolveVoteTimer(stub, sockets);
+    expect(backToClueSnap.phase).toBe('CLUE_ROUND');
+
+    // Second, fresh vote (opened straight from a clue round, not a runoff): display order should
+    // now start one alive player further along than last time.
+    const [voteSnap2] = await submitFullClueRound(sockets, turnOrder, 2);
+    expect(voteSnap2.phase).toBe('VOTE');
+    expect(voteSnap2.voteDisplayOrder).toEqual([turnOrder[1], turnOrder[2], turnOrder[3], turnOrder[0]]);
+
+    // This time two pairs tie -- a runoff reopens VOTE without going through another clue round,
+    // and the display order must stay exactly as it already was for this same vote, not rotate
+    // further.
+    const pairs: [string, string][] = [
+      [turnOrder[0], turnOrder[1]],
+      [turnOrder[1], turnOrder[0]],
+      [turnOrder[2], turnOrder[3]],
+      [turnOrder[3], turnOrder[2]],
+    ];
+    for (const [voterId, targetId] of pairs) {
+      const next = Promise.all(Object.values(sockets).map((s) => waitForMessage(s)));
+      sockets[voterId].send(JSON.stringify({ type: 'SUBMIT_VOTE', targetId }));
+      await next;
+    }
+    const [runoffSnap] = await resolveVoteTimer(stub, sockets);
+    expect(runoffSnap.phase).toBe('VOTE');
+    expect((runoffSnap.voteCandidateIds as string[]).slice().sort()).toEqual(turnOrder.slice().sort());
+    expect(runoffSnap.voteDisplayOrder).toEqual(voteSnap2.voteDisplayOrder);
   });
 });

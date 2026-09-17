@@ -1,4 +1,5 @@
 'use client';
+import type { KeyboardEvent } from 'react';
 import styles from './RoundRecapTable.module.css';
 
 type Role = 'civil' | 'undercover' | 'mrwhite';
@@ -95,26 +96,44 @@ export function RoundRecapTable({
             const revealedRole = !isAlive ? player.role : null;
             const accusationCount = accusationVotes?.[playerId] ?? 0;
 
-            const rowClass = [isTurn && styles.rowActive, !isAlive && styles.rowEliminated].filter(Boolean).join(' ') || undefined;
+            const rowClass = [
+              isTurn && styles.rowActive,
+              !isAlive && styles.rowEliminated,
+              isVotable && styles.votableRow,
+              isVotable && isSelected && styles.votableRowSelected,
+            ]
+              .filter(Boolean)
+              .join(' ') || undefined;
+
+            function handleRowKeyDown(e: KeyboardEvent<HTMLTableRowElement>) {
+              if (e.key !== 'Enter' && e.key !== ' ') return;
+              e.preventDefault();
+              onVote?.(playerId);
+            }
 
             return (
-              <tr key={playerId} className={rowClass}>
+              <tr
+                key={playerId}
+                className={rowClass}
+                {...(isVotable
+                  ? {
+                      role: 'button' as const,
+                      tabIndex: 0,
+                      'aria-pressed': isSelected,
+                      onClick: () => onVote?.(playerId),
+                      onKeyDown: handleRowKeyDown,
+                    }
+                  : {})}
+              >
                 <td className={styles.flagCell}>{isTurn && <span aria-label="C'est son tour">🚩</span>}</td>
                 <td className={styles.nameCell}>
-                  {isVotable ? (
-                    <button
-                      onClick={() => onVote?.(playerId)}
-                      className={`btn btnBlock ${isSelected ? styles.selected : 'btnGhost'}`}
-                    >
-                      {player.name}
-                      {/* Always rendered (space reserved via visibility, not display) so selecting
-                          a player doesn't widen its cell and shift the whole column's width. */}
-                      <span className={`${styles.check}${isSelected ? ` ${styles.checkVisible}` : ''}`} aria-hidden="true">
-                        {' '}✓
-                      </span>
-                    </button>
-                  ) : (
-                    player.name
+                  {player.name}
+                  {isVotable && (
+                    // Always rendered (space reserved via visibility, not display) so selecting
+                    // a player doesn't widen its cell and shift the whole column's width.
+                    <span className={`${styles.check}${isSelected ? ` ${styles.checkVisible}` : ''}`} aria-hidden="true">
+                      {' '}✓
+                    </span>
                   )}
                   {!isAlive && <span className={`stamp ${styles.inlineStamp}`}>Éliminé</span>}
                   {isDisconnected && <span className={`stamp ${styles.inlineStamp}`}>Déconnecté</span>}

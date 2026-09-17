@@ -49,8 +49,6 @@ export function LobbyScreen({
   onKickPlayer,
 }: LobbyScreenProps) {
   const { themes, error: catalogError } = useThemeCatalog();
-  // Purely local UI state -- revealing the per-timer controls isn't itself a game setting.
-  const [showTimers, setShowTimers] = useState(false);
   // Which themes' "choose the series" panel is expanded -- keyed by theme id so each theme
   // toggles independently, same as native <details> would.
   const [openSeries, setOpenSeries] = useState<Record<string, boolean>>({});
@@ -198,7 +196,7 @@ export function LobbyScreen({
       Mr. White
       {!mrWhiteAllowed && (
         <span className={`muted ${styles.mrWhiteHint}`}>
-          (nécessite {MR_WHITE_MIN_PLAYERS} joueurs minimum)
+          ({MR_WHITE_MIN_PLAYERS} joueurs minimum)
         </span>
       )}
     </label>
@@ -210,7 +208,9 @@ export function LobbyScreen({
         id="reveal-elimination-checkbox"
         type="checkbox"
         checked={settings.revealRoleOnElimination}
-        onChange={(e) => onSettingsChange({ ...settings, revealRoleOnElimination: e.target.checked })}
+        onChange={(e) =>
+          onSettingsChange({ ...settings, revealRoleOnElimination: e.target.checked })
+        }
       />
       Révéler le rôle à l&apos;élimination
     </label>
@@ -253,127 +253,105 @@ export function LobbyScreen({
 
   const timerControl = (
     <div className="field">
-      <label htmlFor="timers-toggle" className="checkboxRow">
-        <input
-          id="timers-toggle"
-          type="checkbox"
-          checked={showTimers}
-          onChange={(e) => setShowTimers(e.target.checked)}
-        />
-        <svg
-          aria-hidden="true"
-          className={styles.timerIcon}
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <line x1="10" y1="2" x2="14" y2="2" />
-          <line x1="12" y1="5" x2="12" y2="2" />
-          <line x1="19" y1="6" x2="20.5" y2="4.5" />
-          <circle cx="12" cy="14" r="8" />
-          <line x1="12" y1="14" x2="12" y2="10" />
-        </svg>
-        Timer
-      </label>
-
-      {showTimers && (
-        <div className={styles.timersPanel}>
-          <div className={styles.timerRow}>
-            <label htmlFor="cluetimer-checkbox" className="checkboxRow">
-              <input
-                id="cluetimer-checkbox"
-                type="checkbox"
-                checked={settings.clueTimerEnabled}
-                onChange={(e) =>
-                  onSettingsChange({ ...settings, clueTimerEnabled: e.target.checked })
-                }
-              />
-              Temps d&apos;indice
-            </label>
-            {settings.clueTimerEnabled && (
-              <div className={styles.timerSliderRow}>
-                <input
-                  id="cluetimer-slider"
-                  type="range"
-                  className={styles.timerSlider}
-                  min={CLUE_TIMER_MIN_SECONDS}
-                  max={CLUE_TIMER_MAX_SECONDS}
-                  step={5}
-                  value={settings.clueTimerSeconds}
-                  aria-label="Durée du temps d'indice"
-                  onChange={(e) =>
-                    onSettingsChange({ ...settings, clueTimerSeconds: Number(e.target.value) })
-                  }
-                />
-                <span className={styles.timerValue}>{settings.clueTimerSeconds}s</span>
-              </div>
-            )}
-          </div>
-
-          <div className={styles.timerRow}>
-            <label htmlFor="votetimer-checkbox" className="checkboxRow">
-              <input
-                id="votetimer-checkbox"
-                type="checkbox"
-                checked={settings.voteTimerEnabled}
-                onChange={(e) =>
-                  onSettingsChange({ ...settings, voteTimerEnabled: e.target.checked })
-                }
-              />
-              Temps de vote
-            </label>
-            {settings.voteTimerEnabled && (
-              <div className={styles.timerSliderRow}>
-                <input
-                  id="votetimer-slider"
-                  type="range"
-                  className={styles.timerSlider}
-                  min={VOTE_TIMER_MIN_SECONDS}
-                  max={VOTE_TIMER_MAX_SECONDS}
-                  step={15}
-                  value={settings.voteTimerSeconds}
-                  aria-label="Durée du temps de vote"
-                  onChange={(e) =>
-                    onSettingsChange({ ...settings, voteTimerSeconds: Number(e.target.value) })
-                  }
-                />
-                <span className={styles.timerValue}>{settings.voteTimerSeconds}s</span>
-              </div>
-            )}
-          </div>
-
-          <div className={styles.timerRow}>
-            <label htmlFor="cluepasses-slider">Manches d&apos;indices avant chaque vote</label>
+      <h3>Timer</h3>
+      <div className={styles.timersPanel}>
+        <div className={styles.timerRow}>
+          <label htmlFor="cluetimer-checkbox" className="checkboxRow">
+            <input
+              id="cluetimer-checkbox"
+              type="checkbox"
+              checked={settings.clueTimerEnabled}
+              onChange={(e) =>
+                onSettingsChange({ ...settings, clueTimerEnabled: e.target.checked })
+              }
+            />
+            Temps d&apos;indice
+          </label>
+          {settings.clueTimerEnabled && (
             <div className={styles.timerSliderRow}>
               <input
-                id="cluepasses-slider"
+                id="cluetimer-slider"
                 type="range"
                 className={styles.timerSlider}
-                min={CLUE_PASSES_MIN}
-                max={CLUE_PASSES_MAX}
-                step={1}
-                value={settings.cluePassesPerVote}
-                aria-label="Nombre de manches d'indices avant chaque vote"
+                min={CLUE_TIMER_MIN_SECONDS}
+                max={CLUE_TIMER_MAX_SECONDS}
+                step={5}
+                value={settings.clueTimerSeconds}
+                aria-label="Durée du temps d'indice"
                 onChange={(e) =>
-                  onSettingsChange({ ...settings, cluePassesPerVote: Number(e.target.value) })
+                  onSettingsChange({ ...settings, clueTimerSeconds: Number(e.target.value) })
                 }
               />
-              <span className={styles.timerValue}>{settings.cluePassesPerVote}</span>
+              <span className={styles.timerValue}>{settings.clueTimerSeconds}s</span>
             </div>
+          )}
+        </div>
+
+        <div className={styles.timerRow}>
+          <label htmlFor="votetimer-checkbox" className="checkboxRow">
+            <input
+              id="votetimer-checkbox"
+              type="checkbox"
+              checked={settings.voteTimerEnabled}
+              onChange={(e) =>
+                onSettingsChange({ ...settings, voteTimerEnabled: e.target.checked })
+              }
+            />
+            Temps de vote
+          </label>
+          {settings.voteTimerEnabled && (
+            <div className={styles.timerSliderRow}>
+              <input
+                id="votetimer-slider"
+                type="range"
+                className={styles.timerSlider}
+                min={VOTE_TIMER_MIN_SECONDS}
+                max={VOTE_TIMER_MAX_SECONDS}
+                step={15}
+                value={settings.voteTimerSeconds}
+                aria-label="Durée du temps de vote"
+                onChange={(e) =>
+                  onSettingsChange({ ...settings, voteTimerSeconds: Number(e.target.value) })
+                }
+              />
+              <span className={styles.timerValue}>{settings.voteTimerSeconds}s</span>
+            </div>
+          )}
+        </div>
+
+        <div className={styles.timerRow}>
+          <label htmlFor="cluepasses-slider">Manches d&apos;indices avant chaque vote</label>
+          <div className={styles.timerSliderRow}>
+            <input
+              id="cluepasses-slider"
+              type="range"
+              className={styles.timerSlider}
+              min={CLUE_PASSES_MIN}
+              max={CLUE_PASSES_MAX}
+              step={1}
+              value={settings.cluePassesPerVote}
+              aria-label="Nombre de manches d'indices avant chaque vote"
+              onChange={(e) =>
+                onSettingsChange({ ...settings, cluePassesPerVote: Number(e.target.value) })
+              }
+            />
+            <span className={styles.timerValue}>{settings.cluePassesPerVote}</span>
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
 
   return (
     <div>
       <span className="eyebrow">Salle</span>
-      <button type="button" className={`roomCode ${styles.roomCodeButton}`} onClick={handleCopyCode} aria-label="Copier le code de la salle">
-        {codeCopied ? 'Copié !' : code}
+      <button
+        type="button"
+        className={`roomCode ${styles.roomCodeButton}`}
+        onClick={handleCopyCode}
+        aria-label="Copier le code de la salle"
+      >
+        {codeCopied ? "Copié !" : code}
       </button>
 
       <div className={styles.columns}>
@@ -404,7 +382,11 @@ export function LobbyScreen({
         <div className={styles.settingsColumn}>
           <h3>Réglages</h3>
           <fieldset className={styles.settingsFieldset} disabled={!isHost}>
-            {!isHost && <p className={`muted ${styles.viewOnlyNote}`}>Seul l&apos;hôte peut modifier les réglages.</p>}
+            {!isHost && (
+              <p className={`muted ${styles.viewOnlyNote}`}>
+                Seul l&apos;hôte peut modifier les réglages.
+              </p>
+            )}
 
             <div className={styles.modeToggle} role="radiogroup" aria-label="Mode de jeu">
               <button
@@ -436,9 +418,7 @@ export function LobbyScreen({
               </>
             ) : (
               <div className={styles.classicGrid}>
-                <div className={styles.settingsCol}>
-                  {themesControl}
-                </div>
+                <div className={styles.settingsCol}>{themesControl}</div>
                 <div className={styles.settingsCol}>
                   {revealRoleControl}
                   {timerControl}

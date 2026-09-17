@@ -21,6 +21,13 @@
   animation: pulse 1s ease-in-out infinite;
 }
 
+.reconnectTimer {
+  margin-left: 0.5rem;
+  font-size: 0.8rem;
+  color: var(--danger-strong);
+  border-color: var(--danger-strong);
+}
+
 @keyframes pulse {
   0%, 100% {
     opacity: 1;

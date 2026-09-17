@@ -1,0 +1,24 @@
+.curtain {
+  position: fixed;
+  inset: 0;
+  background: var(--panel-alt);
+  z-index: 50;
+  pointer-events: none;
+  animation: curtainSlideFast 0.3s ease-in forwards;
+  animation-delay: 0.1s;
+}
+
+@keyframes curtainSlideFast {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .curtain {
+    display: none;
+  }
+}

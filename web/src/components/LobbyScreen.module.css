@@ -252,17 +252,10 @@
   accent-color: var(--accent);
 }
 
-.timerIcon {
-  width: 1.15rem;
-  height: 1.15rem;
-  color: var(--text);
-}
-
 .timersPanel {
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
-  padding: 0.5rem 0 0 1.75rem;
 }
 
 .timerRow {

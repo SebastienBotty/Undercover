@@ -5,7 +5,28 @@ import {
   nextRoundAfterVote,
   resolveClueTimerSeconds,
   resolveCluePassesPerVote,
+  rotateTurnOrderFrom,
 } from '../../src/game/clueRound';
+
+describe('rotateTurnOrderFrom', () => {
+  const order = ['a', 'b', 'c', 'd'];
+
+  it('rotates so the given id comes first, wrapping the rest around after it', () => {
+    expect(rotateTurnOrderFrom(order, 'c')).toEqual(['c', 'd', 'a', 'b']);
+  });
+
+  it('returns the order unchanged when startId is already first', () => {
+    expect(rotateTurnOrderFrom(order, 'a')).toEqual(order);
+  });
+
+  it('returns the order unchanged when startId is null', () => {
+    expect(rotateTurnOrderFrom(order, null)).toEqual(order);
+  });
+
+  it('returns the order unchanged when startId is not found in it', () => {
+    expect(rotateTurnOrderFrom(order, 'z')).toEqual(order);
+  });
+});
 
 describe('nextAliveIndex', () => {
   const order = ['a', 'b', 'c', 'd'];

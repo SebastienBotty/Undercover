@@ -57,6 +57,20 @@ describe('EndScreen', () => {
     expect(screen.getByText(/en attente que l'hôte relance/i)).toBeInTheDocument();
   });
 
+  it('stamps the winning team name in the heading, with a distinct color per team (red for Undercover)', () => {
+    const { rerender } = render(
+      <EndScreen winner="undercover" players={players} isHost={false} onRestart={() => {}} onLeave={() => {}} />
+    );
+    const undercoverClassName = screen.getByText('Les Undercover').className;
+    expect(undercoverClassName).toContain('stamp');
+    expect(undercoverClassName.toLowerCase()).toContain('undercover');
+
+    rerender(<EndScreen winner="civil" players={players} isHost={false} onRestart={() => {}} onLeave={() => {}} />);
+    const civilClassName = screen.getByText('Les Civils').className;
+    expect(civilClassName).toContain('stamp');
+    expect(civilClassName).not.toBe(undercoverClassName);
+  });
+
   it('reveals notes instead of characters when players carry a note', () => {
     const notePlayers = [
       { id: 'p1', name: 'Alice', role: 'civil' as const, character: null, note: 14 },

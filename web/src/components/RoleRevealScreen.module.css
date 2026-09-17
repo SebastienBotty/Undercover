@@ -1,3 +1,24 @@
+.revealWrap {
+  position: relative;
+  overflow: hidden;
+}
+
+.curtain {
+  position: absolute;
+  inset: 0;
+  background: #000;
+  z-index: 2;
+  pointer-events: none;
+  animation: curtainSlide 0.5s ease-in forwards;
+  animation-delay: 0.9s;
+}
+
+.content {
+  opacity: 0;
+  animation: contentReveal 0.5s ease-out forwards;
+  animation-delay: 0.9s;
+}
+
 .dossier {
   border: 1px solid var(--panel-border-light);
   border-radius: 6px;
@@ -11,7 +32,6 @@
   );
   position: relative;
   overflow: hidden;
-  animation: reveal 0.4s ease-out;
 }
 
 .dossierRow {
@@ -27,15 +47,13 @@
 
 .photo {
   /* No fixed width/aspect-ratio: the image keeps its natural aspect ratio and is only capped by
-     these maxes, so the border below hugs the actual photo instead of a square box with empty
-     letterboxed space around a non-square source. */
+     these maxes, instead of a square box with empty letterboxed space around a non-square source. */
   width: auto;
   height: auto;
   max-width: min(18rem, 100%);
   max-height: 18rem;
   flex-shrink: 0;
   border-radius: 6px;
-  border: 1px solid var(--panel-border-light);
   filter: grayscale(0.5) contrast(1.05);
 }
 
@@ -76,19 +94,16 @@
   margin-top: 0.6rem;
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  .dossier {
-    animation: reveal 0.4s ease-out;
+@keyframes curtainSlide {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-100%);
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .dossier {
-    animation: none;
-  }
-}
-
-@keyframes reveal {
+@keyframes contentReveal {
   from {
     opacity: 0;
     transform: translateY(6px) scale(0.98);
@@ -96,5 +111,15 @@
   to {
     opacity: 1;
     transform: translateY(0) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .curtain {
+    display: none;
+  }
+  .content {
+    opacity: 1;
+    animation: none;
   }
 }

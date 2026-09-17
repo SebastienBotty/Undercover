@@ -51,14 +51,18 @@
   font-weight: 600;
 }
 
-.selected {
-  background: var(--danger-strong);
-  color: #fff;
-  border: 1px solid var(--danger-strong);
+.votableRow {
+  cursor: pointer;
+  transition: background-color 0.15s ease;
 }
 
-.selected:hover {
-  filter: brightness(1.05);
+.votableRow:hover {
+  background: rgba(217, 164, 65, 0.12);
+}
+
+.votableRowSelected,
+.votableRowSelected:hover {
+  background: rgba(201, 74, 64, 0.22);
 }
 
 .check {

@@ -21,6 +21,11 @@ const STORAGE_KEY = 'room';
 const MAX_TEXT_LENGTH = 200;
 /** Mr. White can only be enabled with this many players or more, so a civilian majority stays possible. */
 const MR_WHITE_MIN_PLAYERS = 5;
+/** A player who disconnects mid-turn (their clue turn or, in note mode, their theme-setter turn)
+ * gets this long to reconnect before being skipped -- independent of the host's clue timer, and
+ * only for an actual dropped connection, never for an explicit LEAVE_ROOM (which already can't
+ * rejoin this game, so waiting for them would just stall everyone else). */
+const DISCONNECT_RECONNECT_GRACE_MS = 30_000;
 
 interface ConnAttachment {
   playerId: string;
@@ -40,6 +45,9 @@ export class GameRoom extends DurableObject {
       stored.accusationVotes ??= {};
       stored.voteCandidateIds ??= null;
       stored.bannedClientIds ??= [];
+      stored.leftClientIds ??= [];
+      stored.pausedTurnRemainingMs ??= null;
+      stored.voteOrderStartId ??= null;
     }
     this.room = stored ?? null;
     this.loaded = true;
@@ -145,6 +153,12 @@ export class GameRoom extends DurableObject {
     }
 
     if (room.phase === 'THEME_SELECT') {
+      // Same rule as a missed clue turn: no elimination, just an accusation vote for the next
+      // tally before handing the theme-setter role on to the next alive player. Whether this
+      // alarm fired because they were slow but connected or because a disconnect grace window
+      // (see armDisconnectGrace) ran out, the turn is moving on -- nothing left to resume.
+      room.pausedTurnRemainingMs = null;
+      this.addAccusationVote(room, room.themeSetterId!);
       await this.settleThemeSetterTurn(room);
       await this.saveRoom();
       this.broadcast();
@@ -155,6 +169,9 @@ export class GameRoom extends DurableObject {
       // Missing the clue timer no longer eliminates anyone outright, whether they merely went
       // quiet or actually disconnected -- it records an accusation vote for the next tally and
       // passes their turn with an empty clue, exactly like a real (empty) submission would.
+      // Whether this is a normal timeout or a disconnect grace window (see armDisconnectGrace)
+      // running out, the turn is moving on -- nothing left to resume.
+      room.pausedTurnRemainingMs = null;
       const playerId = room.turnOrder[room.currentTurnIndex];
       this.addAccusationVote(room, playerId);
       await this.applyClue(playerId, '');
@@ -172,6 +189,37 @@ export class GameRoom extends DurableObject {
       return;
     }
     const deadline = Date.now() + resolveClueTimerSeconds(room.settings.clueTimerSeconds) * 1000;
+    room.turnDeadline = deadline;
+    await this.ctx.storage.setAlarm(deadline);
+  }
+
+  /** The current turn-holder (clue-round turn or note-mode theme-setter) just dropped their
+   * connection -- instead of skipping them immediately, pause whatever deadline was running (or
+   * note that there was none, if the host disabled that timer) and swap in a flat reconnect grace
+   * window. If they reconnect in time, handleJoin's resumeTurnTimer picks the paused timer back up
+   * with exactly the time it had left; if not, the alarm fires exactly like a normal timeout would
+   * (accusation vote, turn passed) since it still finds them as the current turn-holder in an
+   * unchanged phase. Pure mutation: does not save or broadcast. */
+  private async armDisconnectGrace(room: RoomState) {
+    room.pausedTurnRemainingMs = room.turnDeadline ? Math.max(0, room.turnDeadline - Date.now()) : null;
+    const deadline = Date.now() + DISCONNECT_RECONNECT_GRACE_MS;
+    room.turnDeadline = deadline;
+    await this.ctx.storage.setAlarm(deadline);
+  }
+
+  /** The current turn-holder just reconnected before their disconnect grace window ran out --
+   * resume the normal timer armDisconnectGrace paused, picking up with exactly the time it had
+   * left rather than granting a fresh full window. Falls back to a normal (per-settings) timer if
+   * nothing was actually paused (the host had that timer disabled when they disconnected). Pure
+   * mutation: does not save or broadcast. */
+  private async resumeTurnTimer(room: RoomState) {
+    const remainingMs = room.pausedTurnRemainingMs;
+    room.pausedTurnRemainingMs = null;
+    if (remainingMs === null) {
+      await this.scheduleClueTimeout();
+      return;
+    }
+    const deadline = Date.now() + remainingMs;
     room.turnDeadline = deadline;
     await this.ctx.storage.setAlarm(deadline);
   }
@@ -216,6 +264,11 @@ export class GameRoom extends DurableObject {
     if (room.round % passesPerVote === 0) {
       room.phase = 'VOTE';
       room.voteCandidateIds = null;
+      // A fresh vote (not a tie-breaking runoff, which stays within the same vote and doesn't
+      // reach this branch again) starts its display order one alive player further along than
+      // last time, so the same person isn't always shown first.
+      const startFromIndex = room.voteOrderStartId ? room.turnOrder.indexOf(room.voteOrderStartId) : -1;
+      room.voteOrderStartId = room.turnOrder[nextAliveIndex(room.turnOrder, aliveIds, startFromIndex)];
       await this.scheduleVoteTimeout();
       return;
     }
@@ -456,6 +509,7 @@ export class GameRoom extends DurableObject {
     room.votes = {};
     room.accusationVotes = {};
     room.voteCandidateIds = null;
+    room.voteOrderStartId = null;
     room.winner = null;
     room.lastEliminatedId = null;
     room.turnDeadline = null;
@@ -671,12 +725,15 @@ export class GameRoom extends DurableObject {
     room.votes = {};
     room.accusationVotes = {};
     room.voteCandidateIds = null;
+    room.voteOrderStartId = null;
     room.round = 0;
     room.winner = null;
     room.lastEliminatedId = null;
     room.turnDeadline = null;
+    room.pausedTurnRemainingMs = null;
     room.allVotedDeadline = null;
     room.noEliminationReason = null;
+    room.leftClientIds = [];
     room.themeSetterId = null;
     room.currentTheme = null;
     room.themes = [];
@@ -778,17 +835,19 @@ export class GameRoom extends DurableObject {
 
   /**
    * The player is explicitly choosing to leave (clicked "Quitter la partie"), not merely losing
-   * their connection -- ban their client id from ever rejoining this room, same as a host kick.
-   * Unlike a kick, this does NOT itself touch their `alive`/`connected` state or the game's turn
-   * rotation/vote tally: the client sends this right before closing its own socket, so the normal
-   * webSocketClose flow that follows handles all of that exactly as it would for any disconnect
-   * (LOBBY: spliced out; mid-game: marked disconnected, reconnectable) -- the only difference a
-   * voluntary leave adds is that reconnecting afterward is now permanently rejected.
+   * their connection. From the LOBBY this is a no-op ban-wise -- they can rejoin immediately, same
+   * as anyone who just disconnects there. Mid-game, leaving bans them from THIS game only (added to
+   * leftClientIds, cleared on the next RESTART_GAME) so they can't rejoin after having seen their
+   * role, but they're welcome back once the room returns to LOBBY for the next game.
+   * This does NOT itself touch their `alive`/`connected` state or the game's turn rotation/vote
+   * tally: the client sends this right before closing its own socket, so the normal webSocketClose
+   * flow that follows handles all of that exactly as it would for any disconnect (LOBBY: spliced
+   * out; mid-game: marked disconnected, reconnectable within this same game by anyone but them).
    */
   private async handleLeaveRoom(playerId: string) {
     const room = this.room!;
-    if (!room.bannedClientIds.includes(playerId)) {
-      room.bannedClientIds.push(playerId);
+    if (room.phase !== 'LOBBY' && !room.leftClientIds.includes(playerId)) {
+      room.leftClientIds.push(playerId);
     }
     await this.saveRoom();
   }
@@ -840,12 +899,22 @@ export class GameRoom extends DurableObject {
             const nextHost = room.players.find((p) => p.connected);
             if (nextHost) room.hostId = nextHost.id;
           }
-          // If it was their turn to act, pass it on immediately instead of leaving everyone else
-          // waiting out the full clue timer for someone who just lost their connection.
+          // If it was their turn to act, an explicit LEAVE_ROOM (they're already in leftClientIds
+          // and can never rejoin this game) passes it on immediately -- nothing to wait for. A
+          // genuine dropped connection instead gets a reconnect grace window before being skipped.
+          const leftVoluntarily = room.leftClientIds.includes(player.id);
           if (room.phase === 'CLUE_ROUND' && room.turnOrder[room.currentTurnIndex] === player.id) {
-            await this.settleClueTurn(room);
+            if (leftVoluntarily) {
+              await this.settleClueTurn(room);
+            } else {
+              await this.armDisconnectGrace(room);
+            }
           } else if (room.phase === 'THEME_SELECT' && room.themeSetterId === player.id) {
-            await this.settleThemeSetterTurn(room);
+            if (leftVoluntarily) {
+              await this.settleThemeSetterTurn(room);
+            } else {
+              await this.armDisconnectGrace(room);
+            }
           } else if (room.phase === 'VOTE') {
             // Their disconnection shrinks who still needs to vote -- recompute now in case the
             // remaining connected players had already all voted, rather than leaving the room
@@ -878,23 +947,28 @@ export class GameRoom extends DurableObject {
         votes: {},
         accusationVotes: {},
         voteCandidateIds: null,
+        voteOrderStartId: null,
         round: 0,
         winner: null,
         lastEliminatedId: null,
         turnDeadline: null,
+        pausedTurnRemainingMs: null,
         allVotedDeadline: null,
         noEliminationReason: null,
         themeSetterId: null,
         currentTheme: null,
         themes: [],
         bannedClientIds: [],
+        leftClientIds: [],
       };
     }
 
     if (this.room.bannedClientIds.includes(msg.clientId)) {
-      // Covers both a host kick and the player's own past LEAVE_ROOM -- either way they can't
-      // get back in, and there's no need to distinguish which it was at this point.
       this.sendError(ws, 'BANNED', 'Tu ne peux pas rejoindre cette salle');
+      return;
+    }
+    if (this.room.leftClientIds.includes(msg.clientId)) {
+      this.sendError(ws, 'BANNED', 'Tu as quitté cette partie, tu ne peux pas la rejoindre à nouveau');
       return;
     }
 
@@ -904,8 +978,19 @@ export class GameRoom extends DurableObject {
         this.sendError(ws, 'NAME_TAKEN', 'Ce pseudo est déjà pris dans cette salle');
         return;
       }
+      const wasDisconnected = !existing.connected;
       existing.connected = true;
       existing.name = msg.name;
+      // Reconnecting mid-turn resumes whatever normal timer armDisconnectGrace paused, with
+      // exactly the time it had left -- not a fresh full window, and not the leftover reconnect
+      // grace countdown either.
+      if (wasDisconnected) {
+        const isCurrentClueTurn = this.room.phase === 'CLUE_ROUND' && this.room.turnOrder[this.room.currentTurnIndex] === existing.id;
+        const isCurrentThemeSetter = this.room.phase === 'THEME_SELECT' && this.room.themeSetterId === existing.id;
+        if (isCurrentClueTurn || isCurrentThemeSetter) {
+          await this.resumeTurnTimer(this.room);
+        }
+      }
     } else {
       if (this.room.phase !== 'LOBBY') {
         this.sendError(ws, 'GAME_STARTED', 'La partie a déjà commencé');
@@ -938,7 +1023,11 @@ export class GameRoom extends DurableObject {
   }
 
   protected sendError(ws: WebSocket, code: string, message: string) {
-    ws.send(JSON.stringify({ type: 'ERROR', code, message }));
+    try {
+      ws.send(JSON.stringify({ type: 'ERROR', code, message }));
+    } catch {
+      // Socket already closed (e.g. right after this DO closed it itself) -- nothing to notify.
+    }
   }
 
   protected sendErrorTo(playerId: string, code: string, message: string) {
@@ -955,7 +1044,13 @@ export class GameRoom extends DurableObject {
     for (const ws of this.ctx.getWebSockets()) {
       const attachment = ws.deserializeAttachment() as ConnAttachment | null;
       if (!attachment) continue;
-      ws.send(JSON.stringify(buildSnapshot(this.room, attachment.playerId)));
+      try {
+        ws.send(JSON.stringify(buildSnapshot(this.room, attachment.playerId)));
+      } catch {
+        // Socket already closed but not yet pruned from getWebSockets() (e.g. this DO closed it
+        // itself moments ago via closeAndNotify) -- skip it, the rest of the room must still hear
+        // about this state change even if one stale socket can't.
+      }
     }
   }
 }

@@ -22,6 +22,10 @@ interface EliminationScreenProps {
   noEliminationReason?: NoEliminationReason | null;
   selfId: string;
   mode?: 'classic' | 'note';
+  /** Mirrors the host's setting -- when off, even the eliminated player doesn't get the "C'était
+   * un X" reveal text for themselves (they still get the Mr. White guess prompt regardless, since
+   * that's not a reveal, just the mechanic they already know applies to them). */
+  revealRoleOnElimination?: boolean;
   onMrWhiteGuess: (guess: string) => void;
 }
 
@@ -47,6 +51,7 @@ export function EliminationScreen({
   noEliminationReason,
   selfId,
   mode = 'classic',
+  revealRoleOnElimination = true,
   onMrWhiteGuess,
 }: EliminationScreenProps) {
   const [guess, setGuess] = useState('');
@@ -82,11 +87,12 @@ export function EliminationScreen({
           'Tu as été éliminé'
         ) : (
           <>
-            {eliminated.name} <span className="stamp">Éliminé</span>
+            <span className={styles.pseudoStamp}>{eliminated.name}</span>{' '}
+            <span className={`stamp ${styles.stampSlam}`}>Éliminé</span>
           </>
         )}
       </h2>
-      {eliminated.role && (
+      {eliminated.role && (!isSelf || revealRoleOnElimination) && (
         <p className="muted">
           C'était <span className={ROLE_CLASS[eliminated.role]}>{ROLE_LABEL[eliminated.role]}</span>
           {revealedDetail}

@@ -17,9 +17,9 @@ const clues = [
 describe('VoteScreen', () => {
   it('lists alive players excluding the viewer as vote targets', () => {
     render(<VoteScreen players={players} turnOrder={turnOrder} clues={clues} round={2} selfId="p1" onVote={() => {}} onRetractVote={() => {}} />);
-    expect(screen.getByRole('button', { name: 'Bob' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Alice' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Carl' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /bob/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /alice/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /carl/i })).not.toBeInTheDocument();
   });
 
   it('shows the clue recap for every round played so far', () => {
@@ -36,7 +36,7 @@ describe('VoteScreen', () => {
   it('calls onVote with the target id when clicked', () => {
     const onVote = vi.fn();
     render(<VoteScreen players={players} turnOrder={turnOrder} clues={clues} round={2} selfId="p1" onVote={onVote} onRetractVote={() => {}} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Bob' }));
+    fireEvent.click(screen.getByRole('button', { name: /bob/i }));
     expect(onVote).toHaveBeenCalledWith('p2');
   });
 
@@ -44,7 +44,7 @@ describe('VoteScreen', () => {
     render(<VoteScreen players={players} turnOrder={turnOrder} clues={clues} round={2} selfId="p1" onVote={() => {}} onRetractVote={() => {}} />);
     expect(screen.queryByText(/tu as voté/i)).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Bob' }));
+    fireEvent.click(screen.getByRole('button', { name: /bob/i }));
     expect(screen.getByText(/tu as voté pour/i)).toBeInTheDocument();
     expect(screen.getByText('Bob', { selector: 'strong' })).toBeInTheDocument();
   });
@@ -65,7 +65,7 @@ describe('VoteScreen', () => {
     ];
     render(<VoteScreen players={players3} turnOrder={turnOrder} clues={clues} round={2} selfId="p1" onVote={onVote} onRetractVote={() => {}} />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Bob' }));
+    fireEvent.click(screen.getByRole('button', { name: /bob/i }));
     fireEvent.click(screen.getByRole('button', { name: /dora/i }));
 
     expect(onVote).toHaveBeenNthCalledWith(1, 'p2');
@@ -91,7 +91,7 @@ describe('VoteScreen', () => {
     render(<VoteScreen players={players} turnOrder={turnOrder} clues={clues} round={2} selfId="p1" onVote={onVote} onRetractVote={() => {}} />);
 
     fireEvent.click(screen.getByRole('button', { name: /ne pas voter/i }));
-    fireEvent.click(screen.getByRole('button', { name: 'Bob' }));
+    fireEvent.click(screen.getByRole('button', { name: /bob/i }));
 
     expect(onVote).toHaveBeenNthCalledWith(1, null);
     expect(onVote).toHaveBeenNthCalledWith(2, 'p2');
@@ -114,7 +114,7 @@ describe('VoteScreen', () => {
       />,
     );
 
-    const bobButton = screen.getByRole('button', { name: 'Bob' });
+    const bobButton = screen.getByRole('button', { name: /bob/i });
     fireEvent.click(bobButton);
     expect(onVote).toHaveBeenCalledWith('p2');
     expect(screen.getByText(/tu as voté pour/i)).toBeInTheDocument();
@@ -363,9 +363,9 @@ describe('VoteScreen', () => {
           voteCandidateIds={['p2', 'p3']}
         />,
       );
-      expect(screen.getByRole('button', { name: 'Bob' })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: 'Carl' })).toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: 'Dora' })).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /bob/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /carl/i })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /dora/i })).not.toBeInTheDocument();
       expect(screen.getByText(/égalité/i)).toHaveTextContent('Bob, Carl');
     });
 
@@ -382,9 +382,9 @@ describe('VoteScreen', () => {
         />,
       );
       expect(screen.queryByText(/égalité/i)).not.toBeInTheDocument();
-      expect(screen.getByRole('button', { name: 'Bob' })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: 'Carl' })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: 'Dora' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /bob/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /carl/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /dora/i })).toBeInTheDocument();
     });
   });
 });

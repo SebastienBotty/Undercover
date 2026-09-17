@@ -50,8 +50,8 @@ describe('RoundRecapTable', () => {
         onVote={onVote}
       />
     );
-    expect(screen.queryByRole('button', { name: 'Alice' })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Bob' }));
+    expect(screen.queryByRole('button', { name: /alice/i })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /bob/i }));
     expect(onVote).toHaveBeenCalledWith('p2');
   });
 

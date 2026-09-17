@@ -11,15 +11,13 @@
 
 .photo {
   /* No fixed width/aspect-ratio: the image keeps its natural aspect ratio and is only capped by
-     these maxes, so the border below hugs the actual photo instead of a square box with empty
-     letterboxed space around a non-square source. */
+     these maxes, instead of a square box with empty letterboxed space around a non-square source. */
   width: auto;
   height: auto;
   max-width: min(7rem, 30%);
   max-height: 7rem;
   flex-shrink: 0;
   border-radius: 4px;
-  border: 1px solid var(--panel-border-light);
   filter: grayscale(0.5) contrast(1.05);
 }
 

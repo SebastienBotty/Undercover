@@ -113,4 +113,72 @@ describe('ThemeSelectScreen', () => {
       vi.useRealTimers();
     }
   });
+
+  it("shows a reconnect countdown next to the theme-setter's name when they're disconnected", () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date(2024, 0, 1, 0, 0, 0));
+      render(
+        <ThemeSelectScreen
+          players={[{ id: 'p1', name: 'Alice' }, { id: 'p2', name: 'Bob', connected: false }]}
+          turnOrder={['p1', 'p2']}
+          clues={[]}
+          themes={[]}
+          round={1}
+          themeSetterId="p2"
+          turnDeadline={Date.now() + 30_000}
+          selfId="p1"
+          onSubmitTheme={() => {}}
+        />
+      );
+      expect(screen.getByText(/en attente du thème de bob/i)).toBeInTheDocument();
+      expect(screen.getByText(/⏳ 30s/)).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("shows the paused normal timer (frozen) in the header instead of the ticking reconnect grace while the setter is disconnected", () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date(2024, 0, 1, 0, 0, 0));
+      render(
+        <ThemeSelectScreen
+          players={[{ id: 'p1', name: 'Alice' }, { id: 'p2', name: 'Bob', connected: false }]}
+          turnOrder={['p1', 'p2']}
+          clues={[]}
+          themes={[]}
+          round={1}
+          themeSetterId="p2"
+          turnDeadline={Date.now() + 30_000}
+          pausedTurnRemainingMs={89_000}
+          selfId="p1"
+          onSubmitTheme={() => {}}
+        />
+      );
+      // Header shows the frozen 89s from the paused normal timer, not the ticking 30s grace.
+      expect(screen.getByText('⏱ 89s')).toBeInTheDocument();
+      // The reconnect badge next to Bob's name still shows the real, ticking grace countdown.
+      expect(screen.getByText(/⏳ 30s/)).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('shows no reconnect countdown when the theme-setter is connected', () => {
+    render(
+      <ThemeSelectScreen
+        players={[{ id: 'p1', name: 'Alice' }, { id: 'p2', name: 'Bob', connected: true }]}
+        turnOrder={['p1', 'p2']}
+        clues={[]}
+        themes={[]}
+        round={1}
+        themeSetterId="p2"
+        turnDeadline={Date.now() + 30_000}
+        selfId="p1"
+        onSubmitTheme={() => {}}
+      />
+    );
+    expect(screen.queryByText(/⏳/)).not.toBeInTheDocument();
+  });
 });
